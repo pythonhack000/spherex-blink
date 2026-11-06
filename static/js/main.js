@@ -9,7 +9,7 @@ import {
 import { createSky } from './sky.js';
 import { canvasToPlate, fullView, panBy, zoomAt } from './viewport.js';
 import {
-  channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, resolveBand, selectBand,
+  channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, positionAt, resolveBand, selectBand, skyToPixel,
   visitsOf, wavelengthColor,
 } from './stack.js';
 import { runTour } from './tour.js';
@@ -27,6 +27,12 @@ const FULL_RANGE_LABEL = '0.75–5 μm';
 const COMPOSITE_COLOR = [255, 184, 77];
 const COUNT_UP_MS = 900;
 const DRAG_THRESHOLD_PX = 4;
+const FILM_TILE_DELAY_MS = 30;
+const FILM_FIRST_DELAY_MS = 120;
+const FOLLOW_ZOOM = 3;
+const SWEEP_MS = 9000;
+const TRACK_MATCH_YEARS = 0.02;
+const MEASURE_DELAY_MS = 350;
 const DIVE_FOV = 0.4;
 const ARRAY_CANVAS_SIZE = 420;
 const FILM_CANVAS_SIZE = 160;
@@ -57,6 +63,7 @@ const state = {
   track: null,
   playing: false,
   view: 'one',
+  follow: false,
   compare: { a: 0, b: 0, next: 'a' },
   plateView: { zoom: 1, x: 60, y: 60 },
   session: 0,
@@ -90,6 +97,20 @@ function midYear() {
 
 // ---------- Drawing ----------
 
+/** With the camera tied to an object, each date is centred on where that object is then. */
+function viewFor(step) {
+  if (!state.follow || !state.job) return state.plateView;
+  const object = state.spectrumObject ?? state.target;
+  const year = step ? yearOf(step) : midYear();
+  const measured = state.track?.find((point) => Math.abs(point.year - year) < TRACK_MATCH_YEARS);
+  const { ra, dec } = positionAt({ ...motionOf(object), ...object }, year);
+  const { x, y } = measured ?? skyToPixel(ra, dec, state.job);
+  const size = state.job.n;
+  const half = size / FOLLOW_ZOOM / 2;
+  const clamp = (value) => Math.min(size - half, Math.max(half, value));
+  return { zoom: FOLLOW_ZOOM, x: clamp(x + 0.5), y: clamp(y + 0.5) };
+}
+
 function overlayFor(step, extra = {}) {
   return {
     grid: state.job,
@@ -98,7 +119,7 @@ function overlayFor(step, extra = {}) {
     gaia: $('gaia').checked ? state.gaia : null,
     track: state.track,
     pick: state.pick,
-    view: state.plateView,
+    view: viewFor(step),
     ...extra,
   };
 }
@@ -125,6 +146,7 @@ function render() {
   else renderArrays(left, size);
   document.body.dataset.layout = state.view;
   describeStep(left);
+  $('explain').textContent = explainNow();
   markFilm();
   paintAmbient();
 }
@@ -184,7 +206,28 @@ function paintAmbient() {
   ambient.getContext('2d').drawImage($('plate'), 0, 0, ambient.width, ambient.height);
 }
 
+/** Painting is the slow part, so finished pictures are kept and only copied afterwards. */
 function paintStep(step, size, wanted) {
+  const key = `painted|${step?.key ?? ALL_DATES}|${wanted.kind}${wanted.detector ?? wanted.channel ?? ''}|${state.mode}|${state.excludeFlags}`;
+  const stored = cache.entries.get(key);
+  if (stored !== undefined) {
+    if (stored) copyCanvas(stored, buffer);
+    return Boolean(stored);
+  }
+  const shown = paintFresh(step, size, wanted);
+  const copy = shown ? document.createElement('canvas') : null;
+  if (copy) copyCanvas(buffer, copy);
+  cache.entries.set(key, copy);
+  return shown;
+}
+
+function copyCanvas(from, to) {
+  to.width = from.width;
+  to.height = from.height;
+  to.getContext('2d').drawImage(from, 0, 0);
+}
+
+function paintFresh(step, size, wanted) {
   if (step?.key === WISE_STEP) return paintWise(step, size);
   if (state.mode === 'diff') return paintDiffStep(step, size, wanted);
   const frames = step ? step.frames : state.frames;
@@ -243,6 +286,16 @@ function describeStep(step) {
   $('plate-info').textContent = parts.join('. ');
 }
 
+function explainNow() {
+  if (!state.target) return '';
+  if (state.view === 'compare') return t('explainCompare');
+  if (state.mode === 'diff') return t('explainDiff');
+  if (state.follow) return t('explainFollow');
+  if (state.mode === 'sum') return t('explainSum');
+  if (state.band.kind !== 'composite') return t('explainBand');
+  return t(state.target.pmra || state.target.pmdec ? 'explainMover' : 'explainVideo');
+}
+
 // ---------- Controls ----------
 
 function setPressed(container, attribute, value) {
@@ -273,9 +326,20 @@ function renderDates() {
     $('dates').replaceChildren();
     return;
   }
-  const tiles = sequence().map((step, index) => filmTile(step, index));
-  $('dates').replaceChildren(...tiles, filmTile(null, ALL_DATES));
-  markFilm();
+  const session = state.session;
+  const steps = [...sequence().map((step, index) => [step, index]), [null, ALL_DATES]];
+  $('dates').replaceChildren();
+  // One tile per tick, so the main plate appears first and the page never freezes.
+  steps.forEach(([step, position], order) => {
+    setTimeout(() => {
+      if (session !== state.session) return;
+      const saved = document.createElement('canvas');
+      copyCanvas(buffer, saved);
+      $('dates').append(filmTile(step, position));
+      copyCanvas(saved, buffer);
+      markFilm();
+    }, order * FILM_TILE_DELAY_MS + FILM_FIRST_DELAY_MS);
+  });
 }
 
 function markFilm() {
@@ -299,6 +363,42 @@ function pickFilm(position) {
   const side = state.compare.next;
   state.compare = { ...state.compare, [side]: position, next: side === 'a' ? 'b' : 'a' };
   render();
+}
+
+function setFollow(follow) {
+  state.follow = follow;
+  $('follow').setAttribute('aria-pressed', String(follow));
+  if (follow && state.position === ALL_DATES) state.position = 0;
+  if (follow && state.mode !== 'video') setMode('video');
+  if (follow && state.view === 'one') setPlaying(true);
+  render();
+}
+
+async function compareWithPast() {
+  if (state.staticMeta && !$('wise').checked) {
+    $('wise').checked = true;
+    await toggleWise();
+  }
+  setView('compare');
+}
+
+function sweepBands() {
+  setView('one');
+  setMode('sum');
+  const started = performance.now();
+  const session = state.session;
+  const step = () => {
+    const progress = (performance.now() - started) / SWEEP_MS;
+    if (session !== state.session || state.mode !== 'sum') return;
+    if (progress >= 1) {
+      setBand({ kind: 'composite' });
+      setMode('video');
+      return;
+    }
+    setBand({ kind: 'channel', channel: Math.floor(progress * CHANNELS) });
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 function setView(view) {
@@ -383,8 +483,9 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   Object.assign(state, {
     session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
     spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
-    auto: { spectrum: false, final: false }, view: 'one',
+    auto: { spectrum: false, final: false }, view: 'one', follow: false,
   });
+  $('follow').setAttribute('aria-pressed', 'false');
   cache.clear();
   resetPanels(target, fov);
   setPressed($('views'), 'view', 'one');
@@ -413,7 +514,9 @@ async function openStatic(target, session) {
   setPlaying(true);
   render();
   reportProgress(state.job);
-  autoMeasure();
+  setTimeout(() => {
+    if (session === state.session) autoMeasure();
+  }, MEASURE_DELAY_MS);
 }
 
 async function openLive(ra, dec, fov, session) {
@@ -797,10 +900,12 @@ const demoActions = {
   setMode,
   setPlaying,
   spectrumOfTarget,
+  setFollow,
   measureMotion,
   async showWise() {
     $('wise').checked = true;
     await toggleWise();
+    setFollow(false);
     setView('compare');
   },
 };
@@ -826,6 +931,9 @@ function bindControls() {
   });
   bindPlateGestures($('plate'));
   bindPlateGestures($('plate-b'));
+  $('follow').addEventListener('click', () => setFollow(!state.follow));
+  $('try-compare').addEventListener('click', compareWithPast);
+  $('try-bands').addEventListener('click', sweepBands);
   $('views').addEventListener('click', (event) => event.target.dataset.view && setView(event.target.dataset.view));
   $('measure').addEventListener('click', measureMotion);
   $('chart-kind').addEventListener('click', (event) => {
