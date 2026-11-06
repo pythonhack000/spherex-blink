@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   asinhScale, binSpectrum, channelWavelength, decodeFrames, detectorOfChannel, pixelToSky,
-  positionAt, resolveBand, selectBand, sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
+  positionAt, resolveBand, selectBand, sharpenForDisplay, wellCovered, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
 } from '../static/js/stack.js';
 
 const near = (actual, expected, tolerance = 1e-6) =>
@@ -121,4 +121,10 @@ test('display sharpening steepens a peak without touching the input or inventing
   assert.equal(image[40], 10);
   assert.ok(Number.isNaN(sharp[0]));
   assert.equal(sharp[80], 0);
+});
+
+test('frames with large gaps are left out', () => {
+  const full = { pixels: new Float32Array(100) };
+  const holed = { pixels: new Float32Array(100).fill(NaN, 0, 40) };
+  assert.deepEqual(wellCovered([full, holed]), [full]);
 });

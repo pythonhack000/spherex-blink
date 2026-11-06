@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findByName, suggestions } from '../static/js/names.js';
+import { findByName, searchMatches } from '../static/js/names.js';
 
 const presets = [{ key: 'm31', name: 'Andromeda Galaxy', ru: 'Галактика Андромеды', aliases: ['m31', 'andromeda', 'андромеда'] }];
 
@@ -26,7 +26,8 @@ test('returns null for unknown or too short text', () => {
   assert.equal(findByName('a', presets), null);
 });
 
-test('suggestions follow the language', () => {
-  assert.ok(suggestions(presets, 'ru').includes('Галактика Андромеды'));
-  assert.ok(suggestions(presets, 'en').includes('Andromeda Galaxy'));
+test('the search list offers everything, then narrows as you type', () => {
+  assert.ok(searchMatches('', presets).length > 10);
+  assert.deepEqual(searchMatches('андром', presets).map((entry) => entry.key), ['m31']);
+  assert.equal(searchMatches('qqqzzz', presets).length, 0);
 });

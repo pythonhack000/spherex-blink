@@ -45,7 +45,10 @@ export function findByName(query, presets = []) {
   );
 }
 
-/** Display names for the search box's suggestions, in the current language. */
-export function suggestions(presets, language) {
-  return [...presets, ...CATALOG].map((entry) => (language === 'ru' && entry.ru) || entry.name);
+/** Everything the search list offers: ready places first, then other famous objects. */
+export function searchMatches(query, presets) {
+  const wanted = normalise(query);
+  const entries = [...presets.filter((preset) => preset.category !== 'challenge'), ...presets.filter((preset) => preset.category === 'challenge'), ...CATALOG];
+  if (!wanted) return entries;
+  return entries.filter((entry) => namesOf(entry).some((name) => name.includes(wanted)));
 }
