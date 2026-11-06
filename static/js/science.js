@@ -20,6 +20,10 @@ const PEAK_HALF_WINDOW_PX = 3;
 const PEAK_SIGMA = 5;
 const MAD_TO_SIGMA = 1.4826;
 const MAX_CONTROL_STARS = 4;
+const WING_ARCSEC = [14, 26];
+const WING_SKY_ARCSEC = [45, 70];
+const MIN_WING_PIXELS = 20;
+const SATURATED_SHARE = 0.5;
 
 const sortedMedian = (values) => {
   const sorted = Float32Array.from(values).sort();
@@ -67,6 +71,49 @@ export function wavelengthOnPlate(frame, grid, x, y) {
   return frame.wavelength + frame.waveDx * (x - centre) + frame.waveDy * (y - centre);
 }
 
+/**
+ * Light in the outer profile of a star, above the sky, in MJy/sr. A saturated core carries no
+ * brightness information, but its wings still scale with it. The result is relative, not calibrated.
+ */
+export function wingLevel(frame, grid, x, y) {
+  const arcsecPerPixel = grid.scale * 3600;
+  const reach = Math.ceil(WING_SKY_ARCSEC[1] / arcsecPerPixel);
+  const wing = [];
+  const sky = [];
+  for (let row = Math.max(0, Math.floor(y) - reach); row <= Math.min(grid.n - 1, Math.ceil(y) + reach); row += 1) {
+    for (let col = Math.max(0, Math.floor(x) - reach); col <= Math.min(grid.n - 1, Math.ceil(x) + reach); col += 1) {
+      const value = frame.pixels[row * grid.n + col];
+      if (Number.isNaN(value) || frame.mask?.[row * grid.n + col]) continue;
+      const distance = Math.hypot(col - x, row - y) * arcsecPerPixel;
+      if (distance >= WING_ARCSEC[0] && distance <= WING_ARCSEC[1]) wing.push(value);
+      else if (distance >= WING_SKY_ARCSEC[0] && distance <= WING_SKY_ARCSEC[1]) sky.push(value);
+    }
+  }
+  if (wing.length < MIN_WING_PIXELS || sky.length < MIN_WING_PIXELS) return null;
+  return sortedMedian(wing) - sortedMedian(sky);
+}
+
+/** True when most measurements of an object include flagged pixels, usually saturation. */
+export function isSaturated(points) {
+  return points.length > 0 && points.filter((point) => point.flagged).length / points.length > SATURATED_SHARE;
+}
+
+/** Brightest and faintest date of an object in one array, measured in its PSF wings. */
+export function wingBrightness(frames, grid, object, detector) {
+  const dates = visitsOf(frames.filter((frame) => frame.detector === detector)).flatMap((visit) => {
+    const levels = visit.frames.flatMap((frame) => {
+      const { ra, dec } = positionAt(object, mjdToYear(frame.mjd));
+      const { x, y } = skyToPixel(ra, dec, grid);
+      const level = wingLevel(frame, grid, x, y);
+      return level === null ? [] : [level];
+    });
+    return levels.length ? [{ year: mjdToYear(visit.mjd), level: sortedMedian(levels) }] : [];
+  });
+  if (dates.length < 2) return null;
+  const ordered = [...dates].sort((first, second) => first.level - second.level);
+  return { detector, dates: dates.length, faintest: ordered[0], brightest: ordered.at(-1) };
+}
+
 /** Photometry of one object in every exposure, following its motion, ordered by wavelength. */
 export function measureSpectrum(frames, grid, object) {
   const points = [];
@@ -77,6 +124,7 @@ export function measureSpectrum(frames, grid, object) {
     if (measured) {
       points.push({
         ...measured,
+        wing: wingLevel(frame, grid, x, y),
         wavelength: wavelengthOnPlate(frame, grid, x, y),
         detector: frame.detector,
         mjd: frame.mjd,
@@ -237,7 +285,7 @@ function track(visits, grid, object) {
     const located = locate(visit.frames, grid.n, guess);
     if (located) {
       start ??= located;
-      guess = located;
+      // A still source keeps its first guess, so noise on one date cannot walk it away.
       points.push({
         year: mjdToYear(visit.mjd),
         x: located.x,

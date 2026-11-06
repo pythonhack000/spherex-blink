@@ -41,7 +41,7 @@ function robustRange(values) {
   return [Math.min(low - pad, 0), high + pad];
 }
 
-function axes(svg, xTicks, yTicks, x, y, xFormat, xLabel) {
+function axes(svg, xTicks, yTicks, x, y, xFormat, xLabel, yLabel = t('flux')) {
   const plotBottom = HEIGHT - MARGIN.bottom;
   for (const tick of yTicks) {
     svg.append(element('line', { x1: MARGIN.left, x2: WIDTH - MARGIN.right, y1: y(tick), y2: y(tick), class: 'grid' }));
@@ -51,7 +51,7 @@ function axes(svg, xTicks, yTicks, x, y, xFormat, xLabel) {
     svg.append(element('text', { x: x(tick), y: plotBottom + 16, 'text-anchor': 'middle', class: 'tick' }, xFormat(tick)));
   }
   svg.append(element('text', { x: WIDTH - MARGIN.right, y: HEIGHT - 3, 'text-anchor': 'end', class: 'axis' }, xLabel));
-  svg.append(element('text', { x: 4, y: 14, class: 'axis' }, t('flux')));
+  svg.append(element('text', { x: 4, y: 14, class: 'axis' }, yLabel));
 }
 
 function points(svg, data, x, y, xOf) {
@@ -117,7 +117,13 @@ function rampGradient(x) {
   return defs;
 }
 
-export function drawLightCurve(host, data) {
+/** Light curve of a saturated star, from the wings of its profile; relative units. */
+export function drawWingCurve(host, data) {
+  const usable = data.filter((point) => point.wing !== null && point.wing !== undefined);
+  drawLightCurve(host, usable.map((point) => ({ ...point, flux: point.wing, error: 0, flagged: false })), t('wingAxis'));
+}
+
+export function drawLightCurve(host, data, yLabel = t('flux')) {
   const svg = frame(host);
   svg.setAttribute('aria-label', t('lightCurve'));
   const dates = data.map((point) => point.mjd);
@@ -128,6 +134,6 @@ export function drawLightCurve(host, data) {
   const y = scale(yLow, yHigh, HEIGHT - MARGIN.bottom, MARGIN.top);
   const clipped = (value) => Math.min(HEIGHT - MARGIN.bottom, Math.max(MARGIN.top, y(value)));
   const monthYear = new Intl.DateTimeFormat(currentLanguage(), { month: 'short', year: '2-digit', timeZone: 'UTC' });
-  axes(svg, niceTicks(xLow, xHigh, 4), niceTicks(yLow, yHigh), x, y, (value) => monthYear.format(mjdToDate(value)), t('date'));
+  axes(svg, niceTicks(xLow, xHigh, 4), niceTicks(yLow, yHigh), x, y, (value) => monthYear.format(mjdToDate(value)), t('date'), yLabel);
   points(svg, data, x, clipped, (point) => point.mjd);
 }

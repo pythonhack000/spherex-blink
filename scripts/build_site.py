@@ -6,6 +6,7 @@ import gzip
 import json
 import math
 import sys
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,7 @@ MOVER_TINT = (255, 120, 80)
 VARIABLE_TINT = (90, 190, 255)
 HOT_KNEE = 0.62
 SOFT_SCALE_FLOOR = 1e-3
+WING_ARRAYS = {"rwaur": 5, "rdra": 4}
 
 
 def encode(pixels: np.ndarray, soft_scale: float) -> bytes:
@@ -45,7 +47,9 @@ def soft_scale_of(pixels: np.ndarray) -> float:
 
 
 def median_stack(frames) -> np.ndarray:
-    return np.nanmedian(np.stack([frame.pixels for frame in frames]), axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # corners no frame covers stay blank
+        return np.nanmedian(np.stack([frame.pixels for frame in frames]), axis=0)
 
 
 def hot_image(image: np.ndarray, tint, limits) -> Image.Image:
@@ -85,26 +89,31 @@ def _mover_pair(preset, job, frames):
     now_position = propagate(preset.ra, preset.dec, preset.pmra, preset.pmdec, preset.epoch, year_mjd)
     return (
         (wise_pixels, "2010", plate_fraction(job.grid, *then_position)),
-        (now, str(round(2000 + (year_mjd - 51544.5) / 365.25)), plate_fraction(job.grid, *now_position)),
+        (now, str(int(2000 + (year_mjd - 51544.5) / 365.25)), plate_fraction(job.grid, *now_position)),
         MOVER_TINT,
     )
 
 
+def _wing_level(stack, grid, x: float, y: float) -> float:
+    """Light in the star's outer profile above the sky; a saturated core carries no signal."""
+    rows, cols = np.mgrid[: grid.n, : grid.n]
+    distance = np.hypot(cols - x, rows - y) * grid.scale * 3600
+    wing = stack[(distance >= 14) & (distance <= 26)]
+    sky = stack[(distance >= 45) & (distance <= 70)]
+    return float(np.nanmedian(wing) - np.nanmedian(sky))
+
+
 def _variable_pair(preset, job, frames):
     """The faintest and brightest dates of a variable star, both in one array."""
-    from backend.processing import aperture_flux
-
     ra, dec = preset.centre()
     x, y = job.grid.wcs.all_world2pix(ra, dec, 0)
-    band = [frame for frame in frames if frame.meta["detector"] == 2]
+    band = [frame for frame in frames if frame.meta["detector"] == WING_ARRAYS[preset.key]]
     measured = []
     for visit in sorted({frame.meta["visit"] for frame in band}):
         members = [frame for frame in band if frame.meta["visit"] == visit]
         stack = median_stack(members)
-        flux = aperture_flux(stack, np.zeros(stack.shape, np.uint8), job.grid, float(x), float(y))
-        if flux:
-            year = 2000 + (float(np.mean([frame.meta["mjd"] for frame in members])) - 51544.5) / 365.25
-            measured.append((flux[0], stack, year))
+        year = 2000 + (float(np.mean([frame.meta["mjd"] for frame in members])) - 51544.5) / 365.25
+        measured.append((_wing_level(stack, job.grid, float(x), float(y)), stack, year))
     measured.sort(key=lambda item: item[0])
     position = plate_fraction(job.grid, ra, dec)
     faint, bright = measured[0], measured[-1]

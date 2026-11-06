@@ -1,7 +1,7 @@
 // Application state and wiring between the sky map, plate, charts and controls.
 import * as api from './api.js';
-import { drawLightCurve, drawSpectrum } from './chart.js';
-import { measureMotion as trackMotion, measureSpectrum as photometry } from './science.js';
+import { drawLightCurve, drawSpectrum, drawWingCurve } from './chart.js';
+import { isSaturated, measureMotion as trackMotion, measureSpectrum as photometry } from './science.js';
 import { applyTranslations, currentLanguage, setLanguage, t } from './i18n.js';
 import {
   drawPlate, limitsFor, paintComposite, paintDifference, paintMono, stacksFor, StackCache, tintFor,
@@ -280,6 +280,7 @@ async function openStatic(target, session) {
   state.job = { ...meta.grid, status: 'done', available: meta.available, total: meta.total, done: frames.length, failed: 0 };
   state.frames = frames;
   state.visits = visitsOf(frames);
+  state.chart = target.kind === 'variable' ? 'curve' : 'spectrum';
   renderDates();
   setPlaying(true);
   render();
@@ -421,9 +422,12 @@ function drawChart() {
     $('chart-note').textContent = t('noSpectrum');
     return;
   }
+  const shown = bandPoints(points);
+  const useWings = isSaturated(shown);
   if (state.chart === 'spectrum') drawSpectrum($('chart'), points);
-  else drawLightCurve($('chart'), bandPoints(points));
-  $('chart-note').textContent = t('flaggedNote');
+  else if (useWings) drawWingCurve($('chart'), shown);
+  else drawLightCurve($('chart'), shown);
+  $('chart-note').textContent = t(state.chart === 'curve' && useWings ? 'wingNote' : 'flaggedNote');
 }
 
 function bandPoints(points) {
@@ -757,8 +761,11 @@ const number = (value, digits = 2) =>
 function resultRow(preset) {
   const result = resultOf(preset.key);
   const row = document.createElement('tr');
-  const brightness = result.variability && result.variability.faintest > 0
-    ? t('timesBrighter', { ratio: number(result.variability.brightest / result.variability.faintest, 1) })
+  const brightness = result.variability?.faintest.level > 0
+    ? t('timesBrighter', {
+      ratio: number(result.variability.brightest.level / result.variability.faintest.level, 1),
+      detector: result.variability.detector,
+    })
     : t('noneMeasured');
   const cells = [
     preset.name,

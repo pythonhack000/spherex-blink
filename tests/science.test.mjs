@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  apertureFlux, centroid, findControlStars, fitProperMotion, measureMotion, measureSpectrum, wavelengthOnPlate,
+  apertureFlux, centroid, findControlStars, fitProperMotion, isSaturated, measureMotion, measureSpectrum,
+  wavelengthOnPlate, wingBrightness, wingLevel,
 } from '../static/js/science.js';
 import { skyToPixel } from '../static/js/stack.js';
 
@@ -110,4 +111,25 @@ test('measured motion matches an injected mover while a field star stays still',
   assert.ok(result.fit.pmEast < 0, 'moves west');
   near(result.catalog, 9, 1e-9);
   assert.ok(result.controlMedian < 0.3, `field stars moved ${result.controlMedian}`);
+});
+
+test('saturated stars are recognised from their flagged points', () => {
+  assert.equal(isSaturated([{ flagged: true }, { flagged: true }, { flagged: false }]), true);
+  assert.equal(isSaturated([{ flagged: false }, { flagged: true }, { flagged: false }]), false);
+  assert.equal(isSaturated([]), false);
+});
+
+test('wing level follows brightness even when the core is masked', () => {
+  const make = (peak, visit, mjd) => {
+    const pixels = gaussianImage(120, [{ x: 59.5, y: 59.5, peak, sigma: 6 }]);
+    const mask = new Uint8Array(14400);
+    for (let row = 55; row < 65; row += 1) for (let col = 55; col < 65; col += 1) mask[row * 120 + col] = 1;
+    return { pixels, mask, detector: 4, visit, mjd };
+  };
+  const grid = { ra: 10, dec: 0, n: 120, scale: 0.1 / 120 };
+  const object = { ra: 10, dec: 0, pmra: 0, pmdec: 0, epoch: 2016 };
+  const result = wingBrightness([make(100, 0, 60800), make(250, 1, 61000)], grid, object, 4);
+  near(result.brightest.level / result.faintest.level, 2.5, 0.05);
+  assert.ok(result.brightest.year > result.faintest.year);
+  assert.equal(wingLevel({ pixels: new Float32Array(14400).fill(NaN) }, grid, 59.5, 59.5), null);
 });

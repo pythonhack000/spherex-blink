@@ -3,25 +3,15 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
-import { measureMotion, measureSpectrum } from '../static/js/science.js';
+import { measureMotion, wingBrightness } from '../static/js/science.js';
 import { decodeStaticFrames } from '../static/js/stack.js';
 
 const DATA = process.argv[2] ?? 'static/data';
 const TARGETS = JSON.parse(readFileSync(join(DATA, 'targets.json'), 'utf8'));
 const MOTION_ARRAYS = { wise0855: [5, 6] };
 const ALL_ARRAYS = [1, 2, 3, 4, 5, 6];
-const MIN_POINTS_PER_DATE = 1;
-
-function variability(points) {
-  const usable = points.filter((point) => !point.flagged && point.detector === 2);
-  const byVisit = new Map();
-  for (const point of usable) byVisit.set(point.visit, [...(byVisit.get(point.visit) ?? []), point.flux]);
-  const medians = [...byVisit.values()]
-    .filter((fluxes) => fluxes.length >= MIN_POINTS_PER_DATE)
-    .map((fluxes) => fluxes.sort((a, b) => a - b)[fluxes.length >> 1]);
-  if (medians.length < 2) return null;
-  return { faintest: Math.min(...medians), brightest: Math.max(...medians), dates: medians.length };
-}
+// The long-wavelength array with the best date coverage for each variable star.
+const WING_ARRAYS = { rwaur: 5, rdra: 4 };
 
 const results = TARGETS.map((target) => {
   const folder = join(DATA, target.key);
@@ -40,7 +30,7 @@ const results = TARGETS.map((target) => {
     error: motion.fit.totalErr,
     catalog: motion.catalog,
     control: motion.controlMedian,
-    variability: variability(measureSpectrum(frames, meta.grid, target)),
+    variability: WING_ARRAYS[target.key] ? wingBrightness(frames, meta.grid, target, WING_ARRAYS[target.key]) : null,
   };
 });
 writeFileSync(join(DATA, 'results.json'), JSON.stringify(results));
