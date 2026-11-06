@@ -8,6 +8,10 @@ const AMBER = [255, 184, 77];
 const BLUE = [92, 170, 255];
 const NEUTRAL = [235, 240, 248];
 const GAIA_FAINT_LIMIT = 19;
+const HOT_KNEE = 0.62;
+const BLOOM_ALPHA = 0.7;
+const BLOOM_BLUR_DIVISOR = 70;
+const PATH_START_YEAR = 2010.5;
 const SCALE_BAR_ARCSEC = [120, 60, 30, 15, 10];
 
 /** Memoises stacks; cleared whenever new frames arrive or the flag option changes. */
@@ -57,12 +61,21 @@ function paint(buffer, size, colorAt) {
   context.putImageData(image, 0, 0);
 }
 
+/** Black through the band's colour to a white-hot core, like an overexposed plate. */
+function hotColor(tint, level) {
+  if (level < HOT_KNEE) {
+    const rise = level / HOT_KNEE;
+    return [tint[0] * rise, tint[1] * rise, tint[2] * rise];
+  }
+  const burn = (level - HOT_KNEE) / (1 - HOT_KNEE);
+  return tint.map((part) => part + (255 - part) * burn);
+}
+
 export function paintMono(buffer, size, image, limits, tint) {
   paint(buffer, size, (pixel) => {
     const value = image[pixel];
     if (Number.isNaN(value)) return [0, 0, 0, 0];
-    const level = asinhScale(value, limits);
-    return [tint[0] * level, tint[1] * level, tint[2] * level];
+    return hotColor(tint, asinhScale(value, limits));
   });
 }
 
@@ -114,12 +127,23 @@ export function drawPlate(canvas, buffer, overlay) {
   context.fillStyle = '#060b16';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(buffer, 0, 0, canvas.width, canvas.height);
+  drawBloom(context, buffer, canvas);
   const toCanvas = ({ x, y }) => ({ x: (x + 0.5) * scale, y: canvas.height - (y + 0.5) * scale });
   drawGaia(context, overlay, toCanvas);
   drawTrack(context, overlay, toCanvas);
   drawExpected(context, overlay, toCanvas, scale);
   drawPick(context, overlay, toCanvas);
   drawScale(context, overlay, scale, canvas);
+}
+
+/** Lets bright stars glow by adding a blurred copy of the frame on top of itself. */
+function drawBloom(context, buffer, canvas) {
+  context.save();
+  context.globalCompositeOperation = 'lighter';
+  context.globalAlpha = BLOOM_ALPHA;
+  context.filter = `blur(${canvas.width / BLOOM_BLUR_DIVISOR}px)`;
+  context.drawImage(buffer, 0, 0, canvas.width, canvas.height);
+  context.restore();
 }
 
 function project(object, year, grid) {
@@ -141,12 +165,25 @@ function drawGaia(context, { gaia, year, grid }, toCanvas) {
 
 function drawExpected(context, { target, year, grid }, toCanvas, scale) {
   if (!target || !(target.pmra || target.pmdec)) return;
-  const { x, y } = toCanvas(project(target, year, grid));
-  context.strokeStyle = `rgb(${AMBER.join(',')})`;
-  context.lineWidth = 2;
+  context.save();
+  context.shadowColor = '#ffffff';
+  context.shadowBlur = 14;
+  context.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+  context.setLineDash([3, 7]);
+  context.lineWidth = 1.5;
+  const from = toCanvas(project(target, PATH_START_YEAR, grid));
+  const to = toCanvas(project(target, year, grid));
   context.beginPath();
-  context.arc(x, y, Math.max(16, 6 * scale), 0, Math.PI * 2);
+  context.moveTo(from.x, from.y);
+  context.lineTo(to.x, to.y);
   context.stroke();
+  context.setLineDash([]);
+  context.strokeStyle = '#ffffff';
+  context.lineWidth = 2.5;
+  context.beginPath();
+  context.arc(to.x, to.y, Math.max(20, 7 * scale), 0, Math.PI * 2);
+  context.stroke();
+  context.restore();
 }
 
 function drawTrack(context, { track }, toCanvas) {

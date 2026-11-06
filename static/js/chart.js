@@ -1,11 +1,12 @@
 // Spectrum and light-curve charts drawn as inline SVG.
-import { binSpectrum, mjdToDate } from './stack.js';
+import { binSpectrum, mjdToDate, wavelengthColor } from './stack.js';
 import { currentLanguage, t } from './i18n.js';
 
 const WIDTH = 460;
 const HEIGHT = 230;
 const MARGIN = { left: 54, right: 12, top: 26, bottom: 36 };
 const NS = 'http://www.w3.org/2000/svg';
+const RAMP_STOPS = 16;
 
 // Infrared features relevant to the molecules named in the challenge statement, in micrometres.
 const FEATURES = [
@@ -88,7 +89,32 @@ export function drawSpectrum(host, data) {
   const path = binSpectrum(usable.length > 3 ? usable : data)
     .map((point, index) => `${index ? 'L' : 'M'}${x(point.wavelength).toFixed(1)} ${yClipped(point.flux).toFixed(1)}`)
     .join('');
-  svg.append(element('path', { d: path, class: 'line' }));
+  const baseline = yClipped(Math.max(yLow, 0)).toFixed(1);
+  const span = path.match(/[ML]([\d.]+)/g) ?? [];
+  if (span.length) {
+    const first = span[0].slice(1);
+    const last = span.at(-1).slice(1);
+    svg.append(element('path', { d: `${path}L${last} ${baseline}L${first} ${baseline}Z`, class: 'area', fill: 'url(#wave-ramp)' }));
+  }
+  svg.append(rampGradient(x));
+  svg.append(element('path', { d: path, class: 'line', stroke: 'url(#wave-ramp)' }));
+}
+
+/** Horizontal gradient whose colours are those of the wavelengths along the axis. */
+function rampGradient(x) {
+  const defs = element('defs');
+  const gradient = element('linearGradient', {
+    id: 'wave-ramp', gradientUnits: 'userSpaceOnUse', x1: x(0.75), x2: x(5), y1: 0, y2: 0,
+  });
+  for (let step = 0; step <= RAMP_STOPS; step += 1) {
+    const fraction = step / RAMP_STOPS;
+    const wavelength = 0.75 + fraction * 4.25;
+    gradient.append(element('stop', {
+      offset: fraction, 'stop-color': `rgb(${wavelengthColor(wavelength).join(',')})`,
+    }));
+  }
+  defs.append(gradient);
+  return defs;
 }
 
 export function drawLightCurve(host, data) {

@@ -7,7 +7,7 @@ import {
 } from './plate.js';
 import { createSky } from './sky.js';
 import {
-  channelWavelength, CHANNELS, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, positionAt, selectBand,
+  channelWavelength, CHANNELS, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, selectBand,
   visitsOf, wavelengthColor,
 } from './stack.js';
 import { runTour } from './tour.js';
@@ -20,7 +20,11 @@ const DEFAULT_MID_MJD = 61100;
 const WISE_STEP = 'wise';
 const ALL_DATES = 'all';
 const MOTION_SIGNIFICANCE = 3;
+const AUTO_SPECTRUM_FRAMES = 12;
 const FULL_RANGE_LABEL = '0.75–5 μm';
+const COMPOSITE_COLOR = [255, 184, 77];
+const COUNT_UP_MS = 900;
+const DIVE_FOV = 0.4;
 
 const $ = (id) => document.getElementById(id);
 const buffer = document.createElement('canvas');
@@ -45,6 +49,7 @@ const state = {
   track: null,
   playing: false,
   session: 0,
+  auto: { spectrum: false, final: false },
 };
 
 let playTimer = null;
@@ -90,6 +95,13 @@ function render() {
     pick: state.pick,
   });
   describeStep(step);
+  paintAmbient();
+}
+
+/** The page's background glow is the current picture itself, heavily blurred. */
+function paintAmbient() {
+  const ambient = $('ambient');
+  ambient.getContext('2d').drawImage($('plate'), 0, 0, ambient.width, ambient.height);
 }
 
 function paintStep(step, size) {
@@ -206,8 +218,15 @@ function setMode(mode) {
   render();
 }
 
+function bandColor(band) {
+  if (band.kind === 'channel') return wavelengthColor(channelWavelength(band.channel));
+  if (band.kind === 'detector') return tintFor(band);
+  return COMPOSITE_COLOR;
+}
+
 function setBand(band) {
   state.band = band;
+  document.documentElement.style.setProperty('--band', bandColor(band).join(', '));
   $('composite').setAttribute('aria-pressed', String(band.kind === 'composite'));
   $('band-label').textContent = band.kind === 'channel'
     ? `${channelWavelength(band.channel).toFixed(2)} μm`
@@ -234,6 +253,7 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   Object.assign(state, {
     session, target, job: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [], spectrum: null,
     spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
+    auto: { spectrum: false, final: false },
   });
   cache.clear();
   resetPanels(target, fov);
@@ -280,6 +300,7 @@ async function followJob(session) {
     await pullFrames(session);
     if (session !== state.session) return;
     reportProgress(status);
+    if (status.status === 'done') autoMeasure();
     if (status.status === 'done' || status.status === 'error') return;
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
@@ -294,6 +315,23 @@ async function pullFrames(session) {
   cache.clear();
   renderDates();
   render();
+  autoMeasure();
+}
+
+/** Named targets show their spectrum and motion without being asked. */
+function autoMeasure() {
+  if (!state.target?.key) return;
+  const { auto } = state;
+  const finished = state.job.status === 'done';
+  if (!auto.spectrum && state.frames.length >= AUTO_SPECTRUM_FRAMES) {
+    auto.spectrum = true;
+    spectrumOfTarget();
+  }
+  if (!auto.final && finished) {
+    auto.final = true;
+    spectrumOfTarget();
+    if (state.target.pmra || state.target.pmdec) measureMotion();
+  }
 }
 
 function reportProgress(status) {
@@ -315,14 +353,21 @@ function finishedMessage(status) {
 }
 
 function showPlate(open) {
-  $('plate-view').hidden = !open;
-  $('sky-view').hidden = open;
-  $('panel').hidden = !open;
-  $('controls').hidden = !open;
+  document.body.dataset.view = open ? 'plate' : 'sky';
+  $('observatory').hidden = !open;
+  $('hero').hidden = open;
   if (!open) {
     setPlaying(false);
     sky?.refresh();
   }
+}
+
+/** Flies the map into the target, then opens the plate. */
+async function diveInto(target) {
+  const { ra, dec } = centreOf(target);
+  document.body.dataset.view = 'diving';
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) await sky?.flyTo(ra, dec, DIVE_FOV);
+  return openTarget(target);
 }
 
 // ---------- Spectrum and motion ----------
@@ -376,13 +421,16 @@ function pickFromPlate(event) {
 }
 
 function spectrumOfTarget() {
-  return measureSpectrum(state.target, positionAt(state.target, midYear()));
+  return measureSpectrum(state.target, null);
 }
+
+/** Arrays where a target stands out clearly from its neighbours. */
+const BEST_ARRAYS = { wise0855: [5, 6] };
 
 function activeDetectors() {
   if (state.band.kind === 'channel') return [detectorOfChannel(state.band.channel)];
   if (state.band.kind === 'detector') return [state.band.detector];
-  return [1, 2, 3, 4, 5, 6];
+  return BEST_ARRAYS[state.target?.key] ?? [1, 2, 3, 4, 5, 6];
 }
 
 async function measureMotion() {
@@ -403,6 +451,9 @@ async function measureMotion() {
 
 function showMotion(result) {
   const unit = t('perYear');
+  const big = document.createElement('div');
+  big.className = 'big-number';
+  countUp(big, result.fit.total, unit);
   const rows = [
     [t('measured'), `${result.fit.total.toFixed(2)} ± ${result.fit.totalErr.toFixed(2)}${unit}`],
     ...(result.catalog ? [[t('catalogue'), `${result.catalog.toFixed(2)}${unit}`]] : []),
@@ -420,7 +471,26 @@ function showMotion(result) {
   summary.textContent = `${t(real ? 'motionVerdict' : 'motionWeak')} ${t('motionBaseline', {
     count: result.visits.length, detectors: result.detectors.join(', '),
   })}`;
-  $('motion-result').replaceChildren(table, summary);
+  $('motion-result').replaceChildren(big, table, summary);
+}
+
+function countUp(node, value, unit) {
+  const write = (shown) => {
+    const small = document.createElement('small');
+    small.textContent = unit;
+    node.replaceChildren(shown.toFixed(2), small);
+  };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    write(value);
+    return;
+  }
+  const started = performance.now();
+  const step = (now) => {
+    const progress = Math.min(1, (now - started) / COUNT_UP_MS);
+    write(value * (1 - (1 - progress) ** 3));
+    if (progress < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 // ---------- Overlays ----------
@@ -556,7 +626,10 @@ function bindControls() {
     state.chart = event.target.dataset.chart;
     drawChart();
   });
-  $('back-to-sky').addEventListener('click', () => showPlate(false));
+  $('back-to-sky').addEventListener('click', () => {
+    state.session += 1;
+    showPlate(false);
+  });
   $('language').addEventListener('click', toggleLanguage);
   $('tour').addEventListener('click', () => runTour(demoActions, $('tour')));
   $('open-here').addEventListener('click', () => {
@@ -574,6 +647,7 @@ function translate() {
 function toggleLanguage() {
   setLanguage(currentLanguage() === 'ru' ? 'en' : 'ru');
   translate();
+  buildPresets();
   if (!state.job) return;
   describeTarget(state.target);
   renderDates();
@@ -582,15 +656,23 @@ function toggleLanguage() {
   reportProgress(state.job);
 }
 
+const PRESET_BAND = { barnard: 1.4, wise0855: 4.7, epsindib: 2.2, rwaur: 0.9, rdra: 3.4 };
+
+function presetCard(preset) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.style.setProperty('--tint', wavelengthColor(PRESET_BAND[preset.key]).join(', '));
+  const name = document.createElement('strong');
+  name.textContent = preset.name;
+  const hook = document.createElement('small');
+  hook.textContent = t(`hook_${preset.key}`);
+  button.replaceChildren(name, hook);
+  button.addEventListener('click', () => diveInto(preset));
+  return button;
+}
+
 function buildPresets() {
-  const buttons = state.presets.map((preset) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = preset.name;
-    button.addEventListener('click', () => openTarget(preset));
-    return button;
-  });
-  $('presets').replaceChildren(...buttons);
+  $('presets').replaceChildren(...state.presets.map(presetCard));
 }
 
 async function start() {

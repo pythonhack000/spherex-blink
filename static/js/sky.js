@@ -1,5 +1,6 @@
 // The all-sky map, using Aladin Lite with AllWISE tiles proxied by our own server.
-const WHOLE_SKY_FOV = 200;
+const ALADIN_URL = 'https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js';
+const WHOLE_SKY_FOV = 240;
 const DIVE_SECONDS = 3;
 
 /** Falls back to a passive object if the map library or WebGL is unavailable. */
@@ -10,14 +11,24 @@ export async function createSky(containerId, onSelect) {
     refresh() {},
     selected: () => ({ ra: 0, dec: 0 }),
   };
-  if (!window.A) return unavailable;
-  await window.A.init;
-  const map = window.A.aladin(`#${containerId}`, {
+  let A;
+  try {
+    A = (await import(ALADIN_URL)).default;
+    await A.init;
+  } catch (error) {
+    console.error('The sky map could not start:', error);
+    return unavailable;
+  }
+  const map = A.aladin(`#${containerId}`, {
     survey: `${location.origin}/hips`,
     fov: WHOLE_SKY_FOV,
     projection: 'AIT',
-    cooFrame: 'ICRSd',
-    showReticle: true,
+    cooFrame: 'GAL',
+    showReticle: false,
+    showCooLocation: false,
+    showFov: false,
+    showContextMenu: false,
+    showStatusBar: false,
     showCooGrid: false,
     showFullscreenControl: false,
     showLayersControl: false,
@@ -26,7 +37,7 @@ export async function createSky(containerId, onSelect) {
     showShareControl: false,
     showProjectionControl: false,
     showFrame: false,
-    showZoomControl: true,
+    showZoomControl: false,
   });
   let chosen = { ra: 0, dec: 0 };
   map.on('click', (event) => {
@@ -37,7 +48,7 @@ export async function createSky(containerId, onSelect) {
   return {
     goTo: (ra, dec) => map.gotoRaDec(ra, dec),
     async flyTo(ra, dec, fov) {
-      map.gotoRaDec(ra, dec);
+      map.animateToRaDec?.(ra, dec, DIVE_SECONDS);
       map.zoomToFoV?.(fov, DIVE_SECONDS);
       await new Promise((resolve) => setTimeout(resolve, DIVE_SECONDS * 1000));
     },

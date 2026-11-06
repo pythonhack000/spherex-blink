@@ -24,7 +24,8 @@ Barnard's Star, WISE 0855, Epsilon Indi B, RW Aurigae and R Draconis have one-cl
 
 ## Limits
 
-- Photometry is simple aperture photometry without aperture correction.
+- Photometry is simple aperture photometry without aperture correction, and it does not separate
+  close neighbours. WISE 0855 has a nearby star, so its short-wavelength flux is contaminated.
 - Very bright stars saturate SPHEREx. Those points are flagged and their flux is unreliable.
 - The first view of a new position waits for the IRSA cutout service. The picture fills in as
   exposures arrive, and later views come from the cache.

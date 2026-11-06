@@ -73,6 +73,7 @@ async function showWise(actions, sleep) {
   actions.setPlaying(true);
   await sleep(7000);
   actions.caption(t('captionWiseMotion'));
+  actions.setBand({ kind: 'composite' });
   await actions.measureMotion();
   await sleep(7000);
   actions.caption(t('captionWise2010'));
