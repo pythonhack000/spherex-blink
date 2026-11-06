@@ -146,7 +146,7 @@ const formatDate = (date) =>
 
 function describeStep(step) {
   if (step?.key === WISE_STEP) {
-    $('plate-date').textContent = 'AllWISE 2010, 4.6 μm';
+    $('plate-date').textContent = 'AllWISE 2010';
     $('plate-info').textContent = '';
     return;
   }
