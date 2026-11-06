@@ -71,6 +71,7 @@
         <div class="plate-frame">
           <canvas id="plate" width="1600" height="1600" tabindex="0"></canvas>
           <p id="plate-date" class="plate-date"></p>
+          <p id="lock" class="lock" hidden></p>
           <p id="plate-empty" class="plate-empty" hidden></p>
           <p class="plate-hint" data-t="zoomHint"></p>
         </div>
@@ -128,10 +129,15 @@
       <div class="guide">
         <p id="explain" class="explain" aria-live="polite"></p>
         <div class="try">
-          <button id="follow" type="button" class="try-main" data-t="tryFollow" aria-pressed="false"></button>
+          <button id="follow" type="button" class="try-main" aria-pressed="false"></button>
           <button id="try-compare" type="button" data-t="tryCompare"></button>
           <button id="try-bands" type="button" data-t="tryBands"></button>
         </div>
+      </div>
+      <div id="chooser" class="chooser" hidden>
+        <strong data-t="chooseTitle"></strong>
+        <div id="chooser-list" class="chooser-list"></div>
+        <button id="chooser-close" type="button" class="ghost" data-t="cancel"></button>
       </div>
       <div class="timeline">
         <button id="play" type="button" class="glow"></button>

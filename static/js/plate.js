@@ -1,15 +1,18 @@
 // Draws the current stack on the plate canvas, with its overlays.
 import {
-  asinhScale, channelWavelength, COMPOSITE, DETECTOR_RANGES, differenceLimit, positionAt, selectBand,
+  asinhScale, channelWavelength, COMPOSITE, differenceLimit, positionAt, selectBand,
   sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
 } from './stack.js';
 import { fullView, plateToCanvas } from './viewport.js';
 
 const AMBER = [255, 184, 77];
 const BLUE = [92, 170, 255];
-const NEUTRAL = [235, 240, 248];
+const NEUTRAL = [214, 224, 240];
 const GAIA_FAINT_LIMIT = 19;
 const HOT_KNEE = 0.62;
+const RETICLE_COLOR = '#ffb84d';
+const RETICLE_ARM = 0.011;
+const RETICLE_REACH = 0.024;
 const BLOOM_ALPHA = 0.32;
 const BLOOM_LAYER_SIZE = 256;
 const BLOOM_LAYER_BLUR = 2.5;
@@ -34,10 +37,6 @@ export class StackCache {
 
 export function tintFor(band) {
   if (band.kind === 'channel') return wavelengthColor(channelWavelength(band.channel));
-  if (band.kind === 'detector') {
-    const [low, high] = DETECTOR_RANGES[band.detector];
-    return wavelengthColor(Math.sqrt(low * high));
-  }
   return NEUTRAL;
 }
 
@@ -82,14 +81,18 @@ export function paintMono(buffer, size, image, limits, tint) {
   });
 }
 
+/**
+ * All bands in one neutral tone, like a blink comparator's plates. Each pixel takes its brightest
+ * group of arrays, so an object seen only at long wavelengths still shows.
+ */
 export function paintComposite(buffer, size, stacks, limits) {
   const red = sharpenForDisplay(stacks.red, size);
   const green = sharpenForDisplay(stacks.green, size);
   const blue = sharpenForDisplay(stacks.blue, size);
   paint(buffer, size, (pixel) => {
     if (Number.isNaN(red[pixel]) && Number.isNaN(green[pixel]) && Number.isNaN(blue[pixel])) return [0, 0, 0, 0];
-    const part = (image, limit) => (Number.isNaN(image[pixel]) ? 0 : asinhScale(image[pixel], limit) * 255);
-    return [part(red, limits.red), part(green, limits.green), part(blue, limits.blue)];
+    const part = (image, limit) => (Number.isNaN(image[pixel]) ? 0 : asinhScale(image[pixel], limit));
+    return hotColor(NEUTRAL, Math.max(part(red, limits.red), part(green, limits.green), part(blue, limits.blue)));
   });
 }
 
@@ -141,6 +144,7 @@ export function drawPlate(canvas, buffer, overlay) {
   const toCanvas = ({ x, y }) => plateToCanvas(view, size, canvas.width, x, y);
   const scale = (canvas.width / size) * view.zoom;
   drawGaia(context, overlay, toCanvas);
+  drawCandidates(context, overlay, toCanvas);
   drawTrack(context, overlay, toCanvas);
   drawExpected(context, overlay, toCanvas, scale);
   drawPick(context, overlay, toCanvas);
@@ -182,12 +186,38 @@ function drawGaia(context, { gaia, year, grid }, toCanvas) {
   }
 }
 
+/** Corner brackets marking what the camera can lock on to. */
+function drawCandidates(context, { candidates, year, grid }, toCanvas) {
+  if (!candidates?.length) return;
+  const arm = context.canvas.width * RETICLE_ARM;
+  const reach = context.canvas.width * RETICLE_REACH;
+  context.save();
+  context.strokeStyle = RETICLE_COLOR;
+  context.fillStyle = RETICLE_COLOR;
+  context.shadowColor = RETICLE_COLOR;
+  context.shadowBlur = 10;
+  context.lineWidth = 2.5;
+  context.font = `600 ${Math.round(context.canvas.width * 0.02)}px Commissioner, sans-serif`;
+  candidates.forEach((candidate) => {
+    const { x, y } = toCanvas(project(candidate, year, grid));
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      context.beginPath();
+      context.moveTo(x + dx * reach, y + dy * (reach - arm));
+      context.lineTo(x + dx * reach, y + dy * reach);
+      context.lineTo(x + dx * (reach - arm), y + dy * reach);
+      context.stroke();
+    }
+    context.fillText(candidate.short, x + reach + 7, y + reach);
+  });
+  context.restore();
+}
+
 function drawExpected(context, { target, year, grid }, toCanvas, scale) {
   if (!target || !(target.pmra || target.pmdec)) return;
   context.save();
-  context.shadowColor = '#ffffff';
+  context.shadowColor = '#ffb84d';
   context.shadowBlur = 14;
-  context.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+  context.strokeStyle = 'rgba(255, 184, 77, 0.7)';
   context.setLineDash([3, 7]);
   context.lineWidth = 1.5;
   const from = toCanvas(project(target, PATH_START_YEAR, grid));
@@ -197,7 +227,7 @@ function drawExpected(context, { target, year, grid }, toCanvas, scale) {
   context.lineTo(to.x, to.y);
   context.stroke();
   context.setLineDash([]);
-  context.strokeStyle = '#ffffff';
+  context.strokeStyle = '#ffb84d';
   context.lineWidth = 2.5;
   context.beginPath();
   context.arc(to.x, to.y, Math.max(20, 7 * scale), 0, Math.PI * 2);

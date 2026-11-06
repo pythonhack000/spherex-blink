@@ -30,6 +30,12 @@ const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
 const FOLLOW_ZOOM = 1.5;
+const GAIA_EPOCH = 2016;
+const EDGE_PX = 6;
+const CANDIDATES_FAST = 3;
+const CANDIDATES_BRIGHT = 5;
+const CANDIDATE_HIT_PX = 6;
+const SAME_OBJECT_DEG = 0.004;
 const FAST_MOVER_MAS = 1000;
 // The long-wavelength array with the best date coverage for each variable star.
 const CURVE_ARRAYS = { rwaur: 5, rdra: 4 };
@@ -67,6 +73,9 @@ const state = {
   playing: false,
   view: 'one',
   follow: false,
+  lock: null,
+  picking: false,
+  candidates: null,
   compare: { a: 0, b: 0, next: 'a' },
   plateView: { zoom: 1, x: 60, y: 60 },
   session: 0,
@@ -104,7 +113,7 @@ function midYear() {
 /** With the camera tied to an object, each date is centred on where that object is then. */
 function viewFor(step) {
   if (!state.follow || !state.job) return state.plateView;
-  const object = state.spectrumObject ?? state.target;
+  const object = state.lock ?? state.target;
   const year = step ? yearOf(step) : midYear();
   const measured = state.track?.find((point) => Math.abs(point.year - year) < TRACK_MATCH_YEARS);
   const { ra, dec } = positionAt({ ...motionOf(object), ...object }, year);
@@ -116,7 +125,8 @@ function overlayFor(step, extra = {}) {
   return {
     grid: state.job,
     year: step ? yearOf(step) : midYear(),
-    target: state.target,
+    target: followedObject(),
+    candidates: state.picking ? state.candidates : null,
     gaia: $('gaia').checked ? state.gaia : null,
     track: state.track,
     pick: state.pick,
@@ -291,6 +301,7 @@ function explainNow() {
   if (!state.target) return '';
   if (state.view === 'compare') return t('explainCompare');
   if (state.mode === 'diff') return t('explainDiff');
+  if (state.picking) return t('explainChoose');
   if (state.follow) return t('explainFollow');
   if (state.mode === 'sum') return t('explainSum');
   if (state.band.kind !== 'composite') return t('explainBand');
@@ -368,19 +379,129 @@ function pickFilm(position) {
   render();
 }
 
-/** A year of SPHEREx moves a star only a little, so following also brings in 2010. */
-async function setFollow(follow) {
-  state.follow = follow;
-  $('follow').setAttribute('aria-pressed', String(follow));
-  if (follow && state.staticMeta && !$('wise').checked && (state.target.pmra || state.target.pmdec)) {
+const followedObject = () => state.lock ?? state.target;
+
+/** Ties the camera to an object. A year of SPHEREx moves a star little, so 2010 joins in. */
+async function lockCamera(object) {
+  state.lock = object;
+  state.follow = true;
+  state.picking = false;
+  state.candidates = null;
+  state.track = null;
+  if (state.view === 'compare') setView('one');
+  if (state.mode !== 'video') setMode('video');
+  if (state.staticMeta && !$('wise').checked && (object.pmra || object.pmdec)) {
     $('wise').checked = true;
     await toggleWise();
   }
-  if (follow && state.view === 'compare') setView('one');
-  if (follow && state.position === ALL_DATES) state.position = 0;
-  if (follow && state.mode !== 'video') setMode('video');
-  if (follow && state.view === 'one') setPlaying(true);
+  if (state.position === ALL_DATES) state.position = 0;
+  setPlaying(true);
+  measureSpectrum(object, null);
+  $('motion-result').replaceChildren();
+  $('measure').hidden = false;
+  refreshFollowUi();
   render();
+}
+
+function unlockCamera() {
+  state.follow = false;
+  state.lock = null;
+  state.picking = false;
+  state.candidates = null;
+  refreshFollowUi();
+  render();
+}
+
+/** Used by the guided demo: follow the main target, or stop. */
+function setFollow(follow) {
+  return follow ? lockCamera(targetAsObject()) : unlockCamera();
+}
+
+function targetAsObject() {
+  return { ...state.target, short: state.target.name };
+}
+
+async function openChooser() {
+  if (state.follow || state.picking) {
+    unlockCamera();
+    return;
+  }
+  if (!state.gaia.length && state.job) {
+    try {
+      state.gaia = state.staticMeta?.gaia ?? (await api.getGaia(state.job.ra, state.job.dec, state.job.fov));
+    } catch {
+      state.gaia = [];
+    }
+  }
+  state.candidates = chooseCandidates();
+  state.picking = true;
+  setPlaying(false);
+  if (state.position === ALL_DATES) state.position = 0;
+  refreshFollowUi();
+  render();
+}
+
+/** The target, the fastest catalogue stars and the brightest ones, without repeats. */
+function chooseCandidates() {
+  const mid = midYear();
+  const onPlate = state.gaia.filter((star) => {
+    const { x, y } = skyToPixel(star.ra, star.dec, state.job);
+    return x > EDGE_PX && y > EDGE_PX && x < state.job.n - EDGE_PX && y < state.job.n - EDGE_PX && mid;
+  });
+  const speed = (star) => Math.hypot(star.pmra, star.pmdec);
+  const fastest = [...onPlate].sort((first, second) => speed(second) - speed(first)).slice(0, CANDIDATES_FAST);
+  const brightest = [...onPlate].sort((first, second) => first.g - second.g).slice(0, CANDIDATES_BRIGHT);
+  const stars = [...new Set([...fastest, ...brightest])]
+    .filter((star) => !isSameObject(star))
+    .map((star, index) => ({
+      ...star,
+      epoch: GAIA_EPOCH,
+      short: String(index + 1),
+      name: t('gaiaStar', { g: number(star.g, 1), pm: number(speed(star) / 1000, 2) }),
+    }));
+  return [targetAsObject(), ...stars];
+}
+
+function isSameObject(star) {
+  const target = positionAt(state.target, GAIA_EPOCH);
+  return Math.hypot((star.ra - target.ra) * Math.cos((star.dec * Math.PI) / 180), star.dec - target.dec) < SAME_OBJECT_DEG;
+}
+
+function refreshFollowUi() {
+  $('follow').textContent = t(state.follow || state.picking ? 'unlock' : 'tryFollow');
+  $('follow').setAttribute('aria-pressed', String(state.follow || state.picking));
+  document.body.classList.toggle('picking', state.picking);
+  $('lock').hidden = !state.follow;
+  $('lock').textContent = state.follow ? t('lockedOn', { name: followedObject().name }) : '';
+  $('chooser').hidden = !state.picking;
+  if (!state.picking) return;
+  const chips = state.candidates.map((candidate, index) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.textContent = index ? `${candidate.short}. ${candidate.name}` : candidate.name;
+    chip.addEventListener('click', () => lockCamera(candidate));
+    return chip;
+  });
+  $('chooser-list').replaceChildren(...chips);
+}
+
+/** While choosing, a click takes the nearest mark, or else that exact point of the sky. */
+function chooseAt(plate) {
+  const year = midYear();
+  const hit = state.candidates.find((candidate) => {
+    const place = positionAt(candidate, year);
+    const { x, y } = skyToPixel(place.ra, place.dec, state.job);
+    return Math.hypot(x + 0.5 - plate.x, y + 0.5 - plate.y) < CANDIDATE_HIT_PX;
+  });
+  if (hit) {
+    lockCamera(hit);
+    return;
+  }
+  const { ra, dec } = pixelToSky(plate.x - 0.5, plate.y - 0.5, state.job);
+  lockCamera({
+    ra, dec, pmra: 0, pmdec: 0, epoch: GAIA_EPOCH, short: '',
+    name: t('skyPoint', { ra: number(ra, 3), dec: number(dec, 3) }),
+  });
 }
 
 async function compareWithPast() {
@@ -459,7 +580,10 @@ function setMode(mode) {
 
 function bandColor(band) {
   if (band.kind === 'channel') return wavelengthColor(channelWavelength(band.channel));
-  if (band.kind === 'detector') return tintFor(band);
+  if (band.kind === 'detector') {
+    const [low, high] = DETECTOR_RANGES[band.detector];
+    return wavelengthColor(Math.sqrt(low * high));
+  }
   return COMPOSITE_COLOR;
 }
 
@@ -492,9 +616,9 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   Object.assign(state, {
     session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
     spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
-    auto: { spectrum: false, final: false }, view: 'one', follow: false,
+    auto: { spectrum: false, final: false }, view: 'one', follow: false, lock: null, picking: false, candidates: null,
   });
-  $('follow').setAttribute('aria-pressed', 'false');
+  refreshFollowUi();
   cache.clear();
   resetPanels(target, fov);
   setPressed($('views'), 'view', 'one');
@@ -699,7 +823,11 @@ function plateFractions(canvas, event) {
 
 function pickAt(canvas, event) {
   const fraction = plateFractions(canvas, event);
-  const plate = canvasToPlate(state.plateView, state.job.n, fraction.x, fraction.y);
+  const plate = canvasToPlate(viewFor(currentStep()), state.job.n, fraction.x, fraction.y);
+  if (state.picking) {
+    chooseAt(plate);
+    return;
+  }
   const position = pixelToSky(plate.x - 0.5, plate.y - 0.5, state.job);
   measureSpectrum(position, position);
 }
@@ -955,7 +1083,8 @@ function bindControls() {
   });
   bindPlateGestures($('plate'));
   bindPlateGestures($('plate-b'));
-  $('follow').addEventListener('click', () => setFollow(!state.follow));
+  $('follow').addEventListener('click', openChooser);
+  $('chooser-close').addEventListener('click', unlockCamera);
   $('try-compare').addEventListener('click', compareWithPast);
   $('try-bands').addEventListener('click', sweepBands);
   $('views').addEventListener('click', (event) => event.target.dataset.view && setView(event.target.dataset.view));
@@ -981,6 +1110,8 @@ function bindControls() {
 function translate() {
   applyTranslations();
   $('language').textContent = currentLanguage() === 'ru' ? 'EN' : 'RU';
+  if (state.candidates) state.candidates = chooseCandidates();
+  refreshFollowUi();
   $('play').textContent = t(state.playing ? 'pause' : 'play');
 }
 
