@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPHEREx Blink</title>
+  <meta name="description" content="Compare NASA SPHEREx images of any patch of sky across dates and see what moved.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600&family=Literata:opsz,wght@7..72,500&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js" charset="utf-8"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <h1>SPHEREx Blink</h1>
+      <p data-t="tagline"></p>
+    </div>
+    <form id="search" class="search">
+      <input id="search-input" type="text" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
+      <button type="submit" data-t="open"></button>
+    </form>
+    <div class="bar-actions">
+      <button id="tour" type="button" class="primary" data-t="tour"></button>
+      <button id="language" type="button" class="quiet" aria-label="Language">RU</button>
+    </div>
+    <nav id="presets" class="presets" aria-label="Targets"></nav>
+  </header>
+
+  <p id="caption" class="caption" hidden aria-live="polite"></p>
+
+  <main class="stage">
+    <section class="viewer">
+      <div id="sky-view" class="sky-view">
+        <div id="sky"></div>
+        <div class="sky-note">
+          <p data-t="skyHint"></p>
+          <small data-t="skyCredit"></small>
+          <button id="open-here" type="button" class="primary" hidden data-t="openHere"></button>
+        </div>
+      </div>
+
+      <div id="plate-view" class="plate-view" hidden>
+        <div class="plate-frame">
+          <canvas id="plate" width="900" height="900" tabindex="0"></canvas>
+          <p id="plate-empty" class="plate-empty" hidden></p>
+          <p id="plate-date" class="plate-date"></p>
+        </div>
+        <div class="plate-tools">
+          <div class="segment" role="group" id="modes">
+            <button type="button" data-mode="video" data-t="modeVideo"></button>
+            <button type="button" data-mode="sum" data-t="modeSum"></button>
+            <button type="button" data-mode="diff" data-t="modeDiff"></button>
+          </div>
+          <label class="tool">
+            <span data-t="fieldOfView"></span>
+            <select id="fov">
+              <option value="0.05">3′</option>
+              <option value="0.1">6′</option>
+              <option value="0.2">12′</option>
+              <option value="0.5">30′</option>
+            </select>
+          </label>
+          <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
+          <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
+          <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
+          <button id="back-to-sky" type="button" class="quiet" data-t="allSky"></button>
+        </div>
+      </div>
+    </section>
+
+    <aside id="panel" class="panel" hidden>
+      <header class="object">
+        <h2 id="object-name"></h2>
+        <p id="object-kind"></p>
+        <p id="object-coords" class="numbers"></p>
+      </header>
+      <p id="progress" class="progress" role="status"></p>
+
+      <section class="measure">
+        <div class="segment" role="group" id="chart-kind">
+          <button type="button" data-chart="spectrum" data-t="spectrum"></button>
+          <button type="button" data-chart="curve" data-t="lightCurve"></button>
+        </div>
+        <div id="chart" class="chart"></div>
+        <p id="chart-note" class="note"></p>
+      </section>
+
+      <section class="motion">
+        <button id="measure" type="button" data-t="measure"></button>
+        <div id="motion-result" class="note"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="controls" class="controls" hidden>
+    <div class="timeline">
+      <button id="play" type="button" class="primary"></button>
+      <div id="dates" class="dates" role="group"></div>
+    </div>
+    <div class="bands">
+      <button id="composite" type="button" data-t="composite"></button>
+      <div class="band-track">
+        <input id="band" type="range" min="0" max="101" step="1" value="0" data-t-label="bandSlider">
+        <div id="band-scale" class="band-scale" aria-hidden="true"></div>
+      </div>
+      <output id="band-label" class="numbers"></output>
+    </div>
+    <p id="plate-info" class="note"></p>
+  </footer>
+
+  <p class="credit" data-t="credit"></p>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

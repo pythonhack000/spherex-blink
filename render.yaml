@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: spherex-blink
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/presets
+    envVars:
+      - key: BLINK_WORKERS
+        value: "4"
+      - key: BLINK_MAX_JOBS
+        value: "2"
+      - key: MALLOC_ARENA_MAX
+        value: "2"
