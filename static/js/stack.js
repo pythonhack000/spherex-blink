@@ -122,6 +122,14 @@ export function selectBand(frames, band) {
   return frames;
 }
 
+/** A single band may have no exposure here: use the closest band that does. */
+export function resolveBand(frames, band) {
+  if (band.kind !== 'channel' || !frames.length) return band;
+  const channel = frames.reduce((best, frame) =>
+    Math.abs(frame.channel - band.channel) < Math.abs(best - band.channel) ? frame.channel : best, frames[0].channel);
+  return { kind: 'channel', channel };
+}
+
 /** Tangent-plane projection matching the server's north-up, east-left grid. */
 export function skyToPixel(ra, dec, grid) {
   const dRa = (ra - grid.ra) * DEG;

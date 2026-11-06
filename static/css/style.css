@@ -288,22 +288,22 @@ body[data-blink="b"] .blink .ring { left: var(--bx); top: var(--by); }
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px;
+  gap: 10px;
+  padding: 16px;
   background: var(--glass);
   border: 1px solid var(--edge);
   border-radius: 18px;
   backdrop-filter: blur(22px);
 }
 .object-kind { color: var(--accent); font-weight: 600; transition: color 0.2s; }
-.object h2 { font: 800 clamp(24px, 2.4vw, 34px)/1.1 var(--display); }
+.object h2 { font: 800 clamp(22px, 2vw, 30px)/1.1 var(--display); }
 .note { color: var(--dim); font-size: 13px; }
 .progress { color: var(--accent); margin-top: 6px; font-size: 14px; }
 .progress:empty { display: none; }
 
 .motion-result:empty { display: none; }
 .big-number {
-  font: 800 clamp(40px, 4.4vw, 64px)/1 var(--display);
+  font: 800 clamp(34px, 3.4vw, 50px)/1 var(--display);
   color: var(--accent);
   text-shadow: 0 0 30px rgba(var(--band), 0.8);
 }
@@ -312,7 +312,7 @@ body[data-blink="b"] .blink .ring { left: var(--bx); top: var(--by); }
 .motion-result td { padding: 2px 0; }
 .motion-result td:first-child { color: var(--dim); }
 .motion-result td:last-child { text-align: right; }
-.motion-result p { margin-top: 8px; font-size: 14px; }
+.motion-result p { margin-top: 6px; font-size: 13px; line-height: 1.35; }
 
 .chart { margin-top: 8px; min-height: 150px; }
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -388,7 +388,7 @@ body.embed .observatory { height: 100vh; }
 
 /* The Aladin controls follow the same visual language. */
 .aladin-container, .aladin-imageCanvas { background: var(--void) !important; }
-.aladin-imageCanvas { filter: brightness(1.5) saturate(1.5) contrast(1.05); }
+.aladin-imageCanvas { filter: brightness(1.5) saturate(1.5) contrast(1.05); background: var(--void) !important; }
 .aladin-logo-container { opacity: 0.5; }
 
 @media (max-width: 1000px) {

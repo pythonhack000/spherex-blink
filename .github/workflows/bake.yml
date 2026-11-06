@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   bake:
@@ -32,6 +33,7 @@ jobs:
         env:
           BLINK_CACHE: data
         run: |
+          python -m scripts.sky_tiles static/data/sky
           python -m scripts.build_site static/data
           python -m scripts.write_targets static/data
           node scripts/results.mjs static/data
@@ -43,3 +45,7 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: update baked frames"
           git pull --rebase origin main
           git push
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main

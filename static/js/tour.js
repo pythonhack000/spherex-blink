@@ -3,7 +3,8 @@ import { t } from './i18n.js';
 
 const FRAME_WAIT_MS = 45000;
 const POLL_MS = 400;
-const BAND_STEP_MS = 90;
+const BAND_STEP_MS = 60;
+const SWEEP_MS = 9000;
 const CHANNELS = 102;
 const WHOLE_SKY_FOV = 200;
 const SKY_MS = 4000;
@@ -50,8 +51,9 @@ async function showBarnard(actions, sleep) {
 async function sweepBands(actions, sleep) {
   actions.caption(t('captionBands'));
   actions.setMode('sum');
-  for (let channel = 0; channel < CHANNELS; channel += 1) {
-    actions.setBand({ kind: 'channel', channel });
+  const started = performance.now();
+  for (let elapsed = 0; elapsed < SWEEP_MS; elapsed = performance.now() - started) {
+    actions.setBand({ kind: 'channel', channel: Math.floor((elapsed / SWEEP_MS) * CHANNELS) });
     await sleep(BAND_STEP_MS);
   }
   actions.setBand({ kind: 'composite' });

@@ -140,11 +140,17 @@ def job_id(ra: float, dec: float, fov: float) -> str:
 
 
 def sample_evenly(exposures: list[Exposure], limit: int) -> list[Exposure]:
-    """Thin an over-long list while keeping its spread in time."""
+    """Thin a long list evenly in time within each array, so every colour stays covered."""
     if len(exposures) <= limit:
         return exposures
-    keep = np.linspace(0, len(exposures) - 1, limit).astype(int)
-    return [exposures[index] for index in keep]
+    arrays = sorted({item.detector for item in exposures})
+    chosen: list[Exposure] = []
+    for position, detector in enumerate(arrays):
+        members = [item for item in exposures if item.detector == detector]
+        share = (limit - len(chosen)) // (len(arrays) - position)
+        keep = np.linspace(0, len(members) - 1, min(share, len(members))).astype(int)
+        chosen.extend(members[index] for index in keep)
+    return sorted(chosen, key=lambda item: item.mjd)
 
 
 class JobStore:

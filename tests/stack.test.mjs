@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   asinhScale, binSpectrum, channelWavelength, decodeFrames, detectorOfChannel, pixelToSky,
-  positionAt, selectBand, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
+  positionAt, resolveBand, selectBand, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
 } from '../static/js/stack.js';
 
 const near = (actual, expected, tolerance = 1e-6) =>
@@ -102,4 +102,12 @@ test('frame payload decodes meta, pixels and masks', () => {
   assert.equal(decoded.visit, 3);
   assert.deepEqual([...decoded.pixels], [1, 2, 3, 4]);
   assert.deepEqual([...decoded.mask], [0, 1, 0, 1]);
+});
+
+test('a band with no exposure falls back to the closest band that has one', () => {
+  const frames = [{ channel: 10 }, { channel: 40 }];
+  assert.equal(resolveBand(frames, { kind: 'channel', channel: 13 }).channel, 10);
+  assert.equal(resolveBand(frames, { kind: 'channel', channel: 40 }).channel, 40);
+  assert.deepEqual(resolveBand(frames, { kind: 'composite' }), { kind: 'composite' });
+  assert.deepEqual(resolveBand([], { kind: 'channel', channel: 13 }), { kind: 'channel', channel: 13 });
 });

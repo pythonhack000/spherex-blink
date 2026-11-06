@@ -10,7 +10,8 @@ const NEUTRAL = [235, 240, 248];
 const GAIA_FAINT_LIMIT = 19;
 const HOT_KNEE = 0.62;
 const BLOOM_ALPHA = 0.7;
-const BLOOM_BLUR_DIVISOR = 70;
+const BLOOM_LAYER_SIZE = 256;
+const BLOOM_LAYER_BLUR = 3.5;
 const PATH_START_YEAR = 2010.5;
 const SCALE_BAR_ARCSEC = [120, 60, 30, 15, 10];
 
@@ -136,13 +137,20 @@ export function drawPlate(canvas, buffer, overlay) {
   drawScale(context, overlay, scale, canvas);
 }
 
-/** Lets bright stars glow by adding a blurred copy of the frame on top of itself. */
+const bloomLayer = document.createElement('canvas');
+bloomLayer.width = BLOOM_LAYER_SIZE;
+bloomLayer.height = BLOOM_LAYER_SIZE;
+
+/** Lets bright stars glow. The blur runs on a small copy, because blurring a full plate is slow. */
 function drawBloom(context, buffer, canvas) {
+  const layer = bloomLayer.getContext('2d');
+  layer.clearRect(0, 0, BLOOM_LAYER_SIZE, BLOOM_LAYER_SIZE);
+  layer.filter = `blur(${BLOOM_LAYER_BLUR}px)`;
+  layer.drawImage(buffer, 0, 0, BLOOM_LAYER_SIZE, BLOOM_LAYER_SIZE);
   context.save();
   context.globalCompositeOperation = 'lighter';
   context.globalAlpha = BLOOM_ALPHA;
-  context.filter = `blur(${canvas.width / BLOOM_BLUR_DIVISOR}px)`;
-  context.drawImage(buffer, 0, 0, canvas.width, canvas.height);
+  context.drawImage(bloomLayer, 0, 0, canvas.width, canvas.height);
   context.restore();
 }
 

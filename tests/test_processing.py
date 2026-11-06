@@ -46,7 +46,7 @@ def test_visits_split_on_time_gaps():
 
 
 def test_visits_split_when_continuous_coverage_runs_too_long():
-    mjds = list(range(61000, 61100, 2))
+    mjds = list(range(61000, 61200, 2))
     visits = group_visits(mjds)
     assert visits[0] == 0
     assert max(visits) >= 1

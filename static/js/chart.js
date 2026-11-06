@@ -3,7 +3,7 @@ import { binSpectrum, mjdToDate, wavelengthColor } from './stack.js';
 import { currentLanguage, t } from './i18n.js';
 
 const WIDTH = 460;
-const HEIGHT = 230;
+const HEIGHT = 200;
 const MARGIN = { left: 54, right: 12, top: 26, bottom: 36 };
 const NS = 'http://www.w3.org/2000/svg';
 const RAMP_STOPS = 16;
@@ -75,7 +75,8 @@ const scale = (domainLow, domainHigh, rangeLow, rangeHigh) => (value) =>
 export function drawSpectrum(host, data) {
   const svg = frame(host);
   svg.setAttribute('aria-label', t('spectrum'));
-  const [yLow, yHigh] = robustRange(data.map((point) => point.flux));
+  const clean = data.filter((point) => !point.flagged);
+  const [yLow, yHigh] = robustRange((clean.length ? clean : data).map((point) => point.flux));
   const x = scale(0.7, 5.05, MARGIN.left, WIDTH - MARGIN.right);
   const y = scale(yLow, yHigh, HEIGHT - MARGIN.bottom, MARGIN.top);
   const yClipped = (value) => Math.min(HEIGHT - MARGIN.bottom, Math.max(MARGIN.top, y(value)));

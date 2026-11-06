@@ -8,7 +8,7 @@ import {
 } from './plate.js';
 import { createSky } from './sky.js';
 import {
-  channelWavelength, CHANNELS, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, selectBand,
+  channelWavelength, CHANNELS, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, resolveBand, selectBand,
   visitsOf, wavelengthColor,
 } from './stack.js';
 import { runTour } from './tour.js';
@@ -112,19 +112,20 @@ function paintStep(step, size) {
   if (step?.key === WISE_STEP) return paintWise(step, size);
   if (state.mode === 'diff') return paintDiffStep(step, size);
   const frames = step ? step.frames : state.frames;
-  if (!selectBand(frames, state.band).length) return false;
+  const band = resolveBand(frames, state.band);
+  if (!selectBand(frames, band).length) return false;
   const key = step ? `v${step.key}` : ALL_DATES;
-  const stacks = stacksFor(frames, state.band, size, state.excludeFlags, cache, key);
-  if (stacks.image) paintMono(buffer, size, stacks.image, sharedLimits(size), tintFor(state.band));
-  else paintComposite(buffer, size, stacks, sharedLimits(size));
+  const stacks = stacksFor(frames, band, size, state.excludeFlags, cache, key);
+  if (stacks.image) paintMono(buffer, size, stacks.image, sharedLimits(size, band), tintFor(band));
+  else paintComposite(buffer, size, stacks, sharedLimits(size, band));
   return true;
 }
 
 /** One stretch for every date, so brightness changes between frames are real. */
-function sharedLimits(size) {
-  const bandKey = `${state.band.kind}${state.band.detector ?? state.band.channel ?? ''}`;
+function sharedLimits(size, band) {
+  const bandKey = `${band.kind}${band.detector ?? band.channel ?? ''}`;
   return cache.get(`limits|${bandKey}|${state.excludeFlags}`, () =>
-    limitsFor(stacksFor(state.frames, state.band, size, state.excludeFlags, cache, ALL_DATES)));
+    limitsFor(stacksFor(state.frames, band, size, state.excludeFlags, cache, ALL_DATES)));
 }
 
 function paintWise(step, size) {
@@ -155,9 +156,12 @@ function describeStep(step) {
     return;
   }
   $('plate-date').textContent = step ? formatDate(mjdToDate(step.mjd)) : t('allDates');
-  const frames = selectBand(step ? step.frames : state.frames, state.band);
+  const pool = step ? step.frames : state.frames;
+  const frames = selectBand(pool, resolveBand(pool, state.band));
   const flagged = frames.length ? frames.reduce((sum, item) => sum + item.flaggedPct, 0) / frames.length : 0;
-  const parts = [t('frames', { count: frames.length }), t('flagged', { pct: flagged.toFixed(1) })];
+  const parts = [
+    finishedMessage(state.job), t('frames', { count: frames.length }), t('flagged', { pct: flagged.toFixed(1) }),
+  ].filter(Boolean);
   if (state.mode === 'diff') parts.push(t('differenceLegend'));
   else if (state.target?.pmra || state.target?.pmdec) parts.push(t('expected'));
   $('plate-info').textContent = parts.join('. ');
@@ -301,6 +305,7 @@ function resetPanels(target, fov) {
   $('wise').checked = false;
   $('gaia').checked = false;
   $('motion-result').replaceChildren();
+  $('measure').hidden = false;
   $('chart').replaceChildren();
   $('chart-note').textContent = t('clickHint');
   $('progress').textContent = target.key ? '' : t('searching');
@@ -364,7 +369,7 @@ function reportProgress(status) {
     searching: () => t('searching'),
     downloading: () => t('downloading', { done: status.done, total: status.total }),
     error: () => status.error,
-    done: () => finishedMessage(status),
+    done: () => (status.available === 0 ? t('noCoverage') : ''),
   };
   $('progress').textContent = messages[status.status]?.() ?? '';
 }
@@ -499,6 +504,7 @@ function showMotion(result) {
     count: result.visits.length, detectors: result.detectors.join(', '),
   })}`;
   $('motion-result').replaceChildren(big, table, summary);
+  $('measure').hidden = true;
 }
 
 function countUp(node, value, unit) {

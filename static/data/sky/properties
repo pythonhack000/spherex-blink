@@ -1,0 +1,47 @@
+creator_did          = ivo://CDS/P/allWISE/color
+obs_collection       = The Wide-field Infrared Survey Explorer - W4-W2-W1 bands (allWISE color RGB-W4-W2-W1)
+obs_title            = AllWISE color  Red (W4) , Green (W2) , Blue (W1) from raw Atlas Images
+obs_description      = NASA's Wide-field Infrared Survey Explorer (WISE; Wright et al. 2010) mapped the sky at 3.4, 4.6, 12, and 22 um (W1, W2, W3, W4) in 2010 with an angular resolution of 6.1", 6.4", 6.5", & 12.0" in the four bands. WISE achieved 5\u03c3 point source sensitivities better than 0.08, 0.11, 1 and 6 mJy in unconfused regions on the ecliptic in the four bands. Sensitivity improves toward the ecliptic poles due to denser coverage and lower zodiacal background. The All-Sky Release includes all data taken during the WISE full cryogenic mission phase, 7 January 2010 to 6 August 2010, that were processed with improved calibrations and reduction algorithms.
+obs_ack              = This Progressive Survey distribution makes use of data products from the Wide-field Infrared Survey Explorer, which is a joint project of the University of California, Los Angeles, and the Jet Propulsion Laboratory/California Institute of Technology, and NEOWISE, which is a project of the Jet Propulsion Laboratory/California Institute of Technology. WISE and NEOWISE are funded by the National Aeronautics and Space Administration.
+obs_copyright        = IPAC/NASA
+obs_copyright_url    = http://wise2.ipac.caltech.edu/docs/release/allsky/
+client_application   = AladinLite
+client_category      = Image/Infrared/WISE
+client_sort_key      = 04-003-00
+hips_creation_date   = 2014-04-15T08:59Z
+hips_release_date    = 2019-05-20T08:30Z
+hips_builder         = Aladin/HipsGen v10.125
+hips_creator         = Thomas Boch [CDS]
+hips_version         = 1.4
+hips_order = 2
+hips_frame           = equatorial
+hips_tile_width      = 512
+hips_tile_format     = jpeg
+dataproduct_type     = image
+hips_pixel_cut       = 0 3
+hips_rgb_red         = w4 [102.0 151.0 200.0 Log]
+hips_rgb_green       = w2 [0.0 80.0 160.0 Log]
+hips_rgb_blue        = w1 [0.0 200.0 400.0 Log]
+hips_status          = public mirror unclonable
+
+hips_copyright       = CNRS/Unistra
+prov_progenitor      = IPAC/NASA - healpixed by CDS
+bib_reference        = 2010AJ....140.1868W
+bib_reference_url    = http://adsabs.harvard.edu/abs/2010AJ....140.1868W
+#7 January 2010 to 6 August 2010
+t_min                = 55378
+t_max                = 55414
+obs_regime           = Infrared
+# 3.4, 4.6, 12, and 22 um
+em_min               = 3E-6
+em_max               = 2.2E-5
+hips_hierarchy       = mean
+hips_pixel_scale     = 4.473E-4
+hips_initial_fov     = 58.63230142835039
+hips_initial_ra      = 0
+hips_initial_dec     = +0
+hips_order_min       = 0
+dataproduct_subtype  = color
+moc_sky_fraction     = 1
+hipsgen_date         = 2019-05-20T08:30Z
+hipsgen_params       = out=/asd-volumes/sc1-asd-volume6/AllWISE/RGB-W4-W2-W1 UPDATE
