@@ -10,7 +10,7 @@ import { createSky } from './sky.js';
 import { canvasToPlate, fullView, panBy, zoomAt } from './viewport.js';
 import {
   channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, positionAt, resolveBand, selectBand, skyToPixel,
-  visitsOf, wavelengthColor,
+  visitsOf,
 } from './stack.js';
 import { runTour } from './tour.js';
 
@@ -30,6 +30,7 @@ const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
 const FOLLOW_ZOOM = 1.5;
+const NEUTRAL_TINT = '214, 224, 240';
 const GAIA_EPOCH = 2016;
 const EDGE_PX = 6;
 const CANDIDATES_FAST = 3;
@@ -194,8 +195,7 @@ function buildArrays() {
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.dataset.detector = detector;
-    const color = wavelengthColor(Math.sqrt(low * high)).join(', ');
-    tile.style.setProperty('--tint', color);
+    tile.style.setProperty('--tint', NEUTRAL_TINT);
     const canvas = document.createElement('canvas');
     canvas.width = ARRAY_CANVAS_SIZE;
     canvas.height = ARRAY_CANVAS_SIZE;
@@ -581,18 +581,8 @@ function setMode(mode) {
   render();
 }
 
-function bandColor(band) {
-  if (band.kind === 'channel') return wavelengthColor(channelWavelength(band.channel));
-  if (band.kind === 'detector') {
-    const [low, high] = DETECTOR_RANGES[band.detector];
-    return wavelengthColor(Math.sqrt(low * high));
-  }
-  return COMPOSITE_COLOR;
-}
-
 function setBand(band) {
   state.band = band;
-  document.documentElement.style.setProperty('--band', bandColor(band).join(', '));
   $('composite').setAttribute('aria-pressed', String(band.kind === 'composite'));
   $('band-label').textContent = band.kind === 'channel'
     ? `${channelWavelength(band.channel).toFixed(2)} μm`
@@ -604,7 +594,7 @@ function setBand(band) {
 function buildBandScale() {
   const stops = Array.from({ length: CHANNELS }, (_, channel) => {
     const stop = document.createElement('span');
-    stop.style.background = `rgb(${wavelengthColor(channelWavelength(channel)).join(',')})`;
+    if (channel && detectorOfChannel(channel) !== detectorOfChannel(channel - 1)) stop.className = 'array-start';
     return stop;
   });
   $('band-scale').replaceChildren(...stops);
@@ -1130,7 +1120,6 @@ function toggleLanguage() {
   reportProgress(state.job);
 }
 
-const PRESET_BAND = { barnard: 1.4, wise0855: 4.7, epsindib: 2.2, rwaur: 0.9, rdra: 3.4 };
 const BLINK_MS = 900;
 
 /** A looping pair of real plates; which one shows is driven by one attribute on the body. */
@@ -1170,7 +1159,7 @@ function presetCard(preset) {
   const result = resultOf(preset.key);
   const button = document.createElement('button');
   button.type = 'button';
-  button.style.setProperty('--tint', wavelengthColor(PRESET_BAND[preset.key]).join(', '));
+  button.style.setProperty('--tint', NEUTRAL_TINT);
   const name = document.createElement('strong');
   name.textContent = preset.name;
   const hook = document.createElement('small');
