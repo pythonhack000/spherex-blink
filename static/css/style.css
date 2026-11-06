@@ -8,7 +8,7 @@
   --accent: rgb(var(--band));
   --display: Unbounded, Commissioner, sans-serif;
   --body: Commissioner, system-ui, sans-serif;
-  --spectrum: linear-gradient(90deg, #8470ff, #46aaff, #46e1be, #cdeb5a, #ffaa3c, #ff5546);
+  
 }
 
 * { box-sizing: border-box; }
@@ -62,25 +62,15 @@ button.ghost { background: transparent; }
   inset: -12%;
   width: 124%;
   height: 124%;
-  filter: blur(70px) saturate(1.9);
+  filter: blur(70px) saturate(0);
   opacity: 0;
   transition: opacity 0.9s;
   pointer-events: none;
 }
 body[data-view="plate"] .sky { opacity: 0; pointer-events: none; }
-body[data-view="plate"] .ambient { opacity: 0.75; }
+body[data-view="plate"] .ambient { opacity: 0.35; }
 
-.spectrum-line {
-  position: fixed;
-  inset: 0 0 auto;
-  height: 3px;
-  background: var(--spectrum);
-  background-size: 200% 100%;
-  z-index: 5;
-  box-shadow: 0 0 14px rgba(120, 170, 255, 0.8);
-  animation: scan 9s linear infinite;
-}
-@keyframes scan { to { background-position: 200% 0; } }
+.spectrum-line { display: none; }
 
 /* ---------- Top bar ---------- */
 
@@ -101,13 +91,7 @@ body[data-view="plate"] .ambient { opacity: 0.75; }
   white-space: nowrap;
 }
 .logo:hover { box-shadow: none; }
-.logo span {
-  margin-left: 6px;
-  background: var(--spectrum);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
+.logo span { margin-left: 6px; color: var(--accent); }
 .search { flex: 1; display: flex; gap: 8px; max-width: 640px; margin-left: auto; }
 .search input { flex: 1; min-width: 0; }
 
@@ -147,13 +131,7 @@ body[data-view="plate"] .ambient { opacity: 0.75; }
 .hero h1 {
   font: 800 clamp(42px, 7.2vw, 118px)/0.98 var(--display);
   letter-spacing: -0.02em;
-  background: var(--spectrum);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: scan 12s linear infinite;
-  filter: drop-shadow(0 0 34px rgba(120, 150, 255, 0.5));
+  color: var(--ink);
 }
 .hero-sub { max-width: 58ch; font-size: clamp(16px, 1.4vw, 20px); text-shadow: 0 1px 12px #000; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -372,8 +350,8 @@ body[data-layout="compare"] .plate-frame { flex: 1 1 0; height: auto; min-width:
 .chart .error { stroke: rgba(255, 255, 255, 0.22); stroke-width: 0.6; }
 .chart .point { fill: rgba(255, 255, 255, 0.8); }
 .chart .flagged { fill: none; stroke: var(--dim); stroke-width: 0.8; }
-.chart .line { fill: none; stroke-width: 2.6; filter: drop-shadow(0 0 5px rgba(150, 190, 255, 0.9)); }
-.chart .area { stroke: none; opacity: 0.28; }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2.4; }
+.chart .area { stroke: none; fill: var(--accent); opacity: 0.16; }
 
 .tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .tool { display: flex; gap: 8px; align-items: center; font-size: 14px; }
@@ -448,10 +426,9 @@ body.picking #plate { cursor: cell; box-shadow: inset 0 0 0 2px #ffb84d; }
   display: flex;
   border-radius: 999px;
   overflow: hidden;
-  box-shadow: 0 0 22px rgba(var(--band), 0.55);
-  transition: box-shadow 0.2s;
 }
-.band-scale span { flex: 1; }
+.band-scale span { flex: 1; background: rgba(214, 224, 240, 0.28); }
+.band-scale span.array-start { border-left: 2px solid var(--void); }
 .band-track input {
   position: absolute;
   inset: 0;
@@ -487,7 +464,7 @@ body.embed .observatory { height: 100vh; }
 
 /* The Aladin controls follow the same visual language. */
 .aladin-container, .aladin-imageCanvas { background: var(--void) !important; }
-.aladin-imageCanvas { filter: brightness(1.5) saturate(1.5) contrast(1.05); background: var(--void) !important; }
+.aladin-imageCanvas { filter: brightness(1.5) saturate(0) contrast(1.05); background: var(--void) !important; }
 .aladin-logo-container { opacity: 0.5; }
 
 @media (max-width: 1000px) {
@@ -516,7 +493,6 @@ body.embed .observatory { height: 100vh; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spectrum-line, .hero h1 { animation: none; }
   .observatory { animation: none; }
   * { transition: none !important; }
 }

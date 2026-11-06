@@ -1,7 +1,7 @@
 // Draws the current stack on the plate canvas, with its overlays.
 import {
-  asinhScale, channelWavelength, COMPOSITE, differenceLimit, positionAt, selectBand,
-  sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
+  asinhScale, COMPOSITE, differenceLimit, positionAt, selectBand,
+  sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract,
 } from './stack.js';
 import { fullView, plateToCanvas } from './viewport.js';
 
@@ -35,8 +35,7 @@ export class StackCache {
   }
 }
 
-export function tintFor(band) {
-  if (band.kind === 'channel') return wavelengthColor(channelWavelength(band.channel));
+export function tintFor() {
   return NEUTRAL;
 }
 
