@@ -7,7 +7,7 @@
   <meta name="description" content="Compare NASA SPHEREx images of any patch of sky across dates and see what moved.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600&family=Unbounded:wght@400;600;800&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=mono">
+  <link rel="stylesheet" href="css/style.css?v=places">
 </head>
 <body data-view="sky">
   <div id="sky" class="sky"></div>
@@ -17,8 +17,9 @@
   <header class="top">
     <button id="back-to-sky" type="button" class="logo">SPHEREx<span>Blink</span></button>
     <form id="search" class="search">
-      <input id="search-input" type="text" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
+      <input id="search-input" type="text" list="name-list" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
       <button type="submit" data-t="open"></button>
+      <datalist id="name-list"></datalist>
     </form>
     <button id="tour" type="button" class="ghost" data-t="tour"></button>
     <button id="language" type="button" class="ghost" aria-label="Language">RU</button>
@@ -42,6 +43,7 @@
         <figcaption data-t="proofCaption"></figcaption>
       </figure>
     </div>
+    <div id="categories" class="segment categories" role="group"></div>
     <nav id="presets" class="presets" aria-label="Targets"></nav>
   </section>
 
@@ -142,6 +144,11 @@
       <div class="timeline">
         <button id="play" type="button" class="glow"></button>
         <div id="dates" class="film" role="group"></div>
+        <div class="range">
+          <label><span data-t="rangeFrom"></span><select id="range-from"></select></label>
+          <label><span data-t="rangeTo"></span><select id="range-to"></select></label>
+          <button id="endpoints" type="button" data-t="rangeEnds"></button>
+        </div>
         <div class="segment" role="group" id="views">
           <button type="button" data-view="one" data-t="viewOne"></button>
           <button type="button" data-view="compare" data-t="viewCompare"></button>
@@ -158,6 +165,6 @@
     </footer>
   </main>
 
-  <script type="module" src="js/main.js?v=mono"></script>
+  <script type="module" src="js/main.js?v=places"></script>
 </body>
 </html>

@@ -14,12 +14,12 @@ from PIL import Image, ImageFilter
 
 from backend import gaia, wise
 from backend.jobs import Job
-from backend.presets import PRESETS
+from backend.presets import ALL_TARGETS
 
 OUTPUT = Path(sys.argv[1] if len(sys.argv) > 1 else "static/data")
 NAN_CODE = -32768
 ENCODE_STEP = 1e-3  # asinh units per integer step: about 0.1% relative precision
-THUMB_SIZE = 960
+THUMB_SIZE = 720
 THUMB_QUALITY = 82
 BLOOM_RADIUS = 9
 BLOOM_STRENGTH = 0.3
@@ -125,9 +125,19 @@ def _variable_pair(preset, job, frames):
     )
 
 
+def _colour_pair(preset, job, frames):
+    """A galaxy or nebula does not move, so its two plates show short and long wavelengths."""
+    short = [frame for frame in frames if frame.meta["detector"] in (1, 2)]
+    long_ = [frame for frame in frames if frame.meta["detector"] in (5, 6)]
+    centre = plate_fraction(job.grid, *preset.centre())
+    return (median_stack(short), "1 μm", centre), (median_stack(long_), "4.6 μm", centre), MOVER_TINT
+
+
 def write_thumbnails(preset, job, frames, folder: Path) -> dict:
     is_mover = math.hypot(preset.pmra, preset.pmdec) > FAST_MOVER_MAS
-    first, second, tint = (_mover_pair if is_mover else _variable_pair)(preset, job, frames)
+    pair = _mover_pair if is_mover else _variable_pair if preset.key in WING_ARRAYS else _colour_pair
+    first, second, tint = pair(preset, job, frames)
+    is_mover = is_mover or pair is _colour_pair
     # Each survey has its own units, so movers get one stretch per image; variables share one.
     shared = limits_of(np.concatenate([first[0].ravel(), second[0].ravel()]))
     records = []
@@ -136,12 +146,12 @@ def write_thumbnails(preset, job, frames, folder: Path) -> dict:
         name = f"thumb-{tag}.webp"
         hot_image(image, tint, limits).save(folder / name, quality=THUMB_QUALITY)
         records.append({"file": name, "label": label, **position})
-    return {"kind": "mover" if is_mover else "variable", "frames": records}
+    return {"kind": pair.__name__.strip("_").split("_")[0], "frames": records}
 
 
 def build(preset) -> dict:
     ra, dec = preset.centre()
-    job = Job(ra, dec, preset.fov)
+    job = Job(ra, dec, preset.fov, limit=preset.limit)
     job.run()
     if job.status != "done" or not job.frames:
         raise RuntimeError(f"{preset.key}: {job.status} {job.error}")
@@ -171,4 +181,4 @@ def build(preset) -> dict:
 
 
 if __name__ == "__main__":
-    print([build(preset) for preset in PRESETS], flush=True)
+    print([build(preset) for preset in ALL_TARGETS], flush=True)

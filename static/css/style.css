@@ -156,6 +156,7 @@ body[data-view="diving"] .hero, body[data-view="diving"] .about { opacity: 0; tr
 .blink .plate-b, .blink .label-b { visibility: hidden; }
 body[data-blink="b"] .blink .plate-b, body[data-blink="b"] .blink .label-b { visibility: visible; }
 body[data-blink="b"] .blink .label-a { visibility: hidden; }
+.blink.place .ring { display: none; }
 .blink .ring {
   position: absolute;
   left: var(--ax);
@@ -170,7 +171,8 @@ body[data-blink="b"] .blink .label-a { visibility: hidden; }
 body[data-blink="b"] .blink .ring { left: var(--bx); top: var(--by); }
 .blink .ring { border-color: #ffb84d; box-shadow: 0 0 14px #ffb84d; }
 
-.presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; width: 100%; }
+.categories { flex-wrap: wrap; }
+.presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; width: 100%; }
 .presets button {
   --tint: 255, 255, 255;
   display: grid;
@@ -389,6 +391,11 @@ body.picking #plate { cursor: cell; box-shadow: inset 0 0 0 2px #ffb84d; }
 .try button { padding: 8px 15px; font-size: 14px; font-weight: 600; }
 .try button.try-main { border-color: var(--accent); }
 .hero-help { color: var(--accent); font-weight: 600; text-shadow: 0 1px 10px #000; }
+.range { flex: none; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.range label { display: flex; gap: 5px; align-items: center; color: var(--dim); }
+.range select { padding: 5px 8px; font-size: 13px; max-width: 128px; color: var(--ink); }
+.range select option { color: #05060f; }
+.range button { padding: 5px 11px; font-size: 13px; }
 .timeline, .bands { display: flex; gap: 14px; align-items: center; }
 .timeline #play { min-width: 92px; }
 .film { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
@@ -484,7 +491,8 @@ body.embed .observatory { height: 100vh; }
   .arrays { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none; }
   .arrays canvas { aspect-ratio: 1; height: auto; }
   .side { overflow: visible; }
-  .timeline { align-items: flex-start; }
+  .timeline { align-items: flex-start; flex-wrap: wrap; }
+  .range { flex-wrap: wrap; }
   .bands { flex-wrap: wrap; }
   .guide { flex-direction: column; align-items: stretch; }
   .try { flex-wrap: wrap; }

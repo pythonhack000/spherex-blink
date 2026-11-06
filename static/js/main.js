@@ -6,6 +6,7 @@ import { applyTranslations, currentLanguage, setLanguage, t } from './i18n.js';
 import {
   drawPlate, limitsFor, paintComposite, paintDifference, paintMono, stacksFor, StackCache, tintFor,
 } from './plate.js';
+import { findByName, suggestions } from './names.js';
 import { createSky } from './sky.js';
 import { canvasToPlate, fullView, panBy, zoomAt } from './viewport.js';
 import {
@@ -30,6 +31,7 @@ const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
 const FOLLOW_ZOOM = 1.5;
+const MIN_NOTED_SPEED = 0.2;
 const NEUTRAL_TINT = '214, 224, 240';
 const GAIA_EPOCH = 2016;
 const EDGE_PX = 6;
@@ -73,6 +75,8 @@ const state = {
   track: null,
   playing: false,
   view: 'one',
+  range: { from: null, to: null, endpoints: true },
+  category: 'challenge',
   follow: false,
   lock: null,
   picking: false,
@@ -158,7 +162,7 @@ function render() {
   else renderArrays(left, size);
   document.body.dataset.layout = state.view;
   describeStep(left);
-  $('explain').textContent = explainNow();
+  $('explain').textContent = [explainNow(), state.view === 'compare' || state.playing ? rangeNote() : ''].filter(Boolean).join(' ');
   markFilm();
   paintAmbient();
 }
@@ -305,7 +309,8 @@ function explainNow() {
   if (state.follow) return t('explainFollow');
   if (state.mode === 'sum') return t('explainSum');
   if (state.band.kind !== 'composite') return t('explainBand');
-  return t(Math.hypot(state.target.pmra ?? 0, state.target.pmdec ?? 0) > FAST_MOVER_MAS ? 'explainMover' : 'explainVideo');
+  if (isFastMover(state.target)) return t('explainMover');
+  return t(state.target.kind === 'variable' ? 'explainVideo' : 'explainPlace');
 }
 
 // ---------- Controls ----------
@@ -348,6 +353,7 @@ function renderDates() {
   }
   const tiles = [...sequence().map((step, index) => filmTile(step, index)), filmTile(null, ALL_DATES)];
   $('dates').replaceChildren(...tiles.map((tile) => tile.button));
+  renderRange();
   markFilm();
   tiles.forEach((tile, order) => {
     setTimeout(() => {
@@ -378,6 +384,8 @@ function pickFilm(position) {
   state.compare = { ...state.compare, [side]: position, next: side === 'a' ? 'b' : 'a' };
   render();
 }
+
+const isFastMover = (object) => Math.hypot(object.pmra ?? 0, object.pmdec ?? 0) > FAST_MOVER_MAS;
 
 const followedObject = () => state.lock ?? state.target;
 
@@ -540,7 +548,8 @@ function setView(view) {
   if (view === 'compare') {
     setPlaying(false);
     if (state.mode !== 'video') setMode('video');
-    state.compare = { a: 0, b: Math.max(0, sequence().length - 1), next: 'a' };
+    const played = playedPositions();
+    state.compare = { a: played[0] ?? 0, b: played.at(-1) ?? 0, next: 'a' };
   }
   render();
 }
@@ -559,12 +568,70 @@ function setPlaying(playing) {
   if (playing) playTimer = setInterval(advance, FRAME_MS);
 }
 
+/** Positions in the date strip that the video plays, from the chosen date to the chosen date. */
+function playedPositions() {
+  const steps = sequence();
+  if (!steps.length) return [];
+  const find = (key, fallback) => {
+    const index = steps.findIndex((step) => String(step.key) === String(key));
+    return index >= 0 ? index : fallback;
+  };
+  const first = find(state.range.from, 0);
+  const last = find(state.range.to, steps.length - 1);
+  const [low, high] = first <= last ? [first, last] : [last, first];
+  if (state.range.endpoints) return low === high ? [low] : [low, high];
+  return steps.map((_, index) => index).filter((index) => index >= low && index <= high);
+}
+
 function advance() {
-  const count = sequence().length;
-  if (count < 2) return;
-  state.position = state.position === ALL_DATES ? 0 : (state.position + 1) % count;
-  renderDates();
+  const played = playedPositions();
+  if (played.length < 2) return;
+  const at = played.indexOf(state.position);
+  state.position = played[(at + 1) % played.length];
+  markFilm();
   render();
+}
+
+function renderRange() {
+  const steps = sequence();
+  const options = () => steps.map((step) => {
+    const option = document.createElement('option');
+    option.value = String(step.key);
+    option.textContent = stepLabel(step);
+    return option;
+  });
+  const fill = (select, value) => {
+    select.replaceChildren(...options());
+    select.value = String(value ?? '');
+  };
+  fill($('range-from'), state.range.from ?? steps[0]?.key);
+  fill($('range-to'), state.range.to ?? steps.at(-1)?.key);
+  $('endpoints').setAttribute('aria-pressed', String(state.range.endpoints));
+}
+
+function setRange(change) {
+  state.range = { ...state.range, ...change };
+  const played = playedPositions();
+  if (played.length) state.position = played[0];
+  if (state.view === 'compare' && played.length) {
+    state.compare = { a: played[0], b: played.at(-1), next: 'a' };
+  }
+  renderRange();
+  markFilm();
+  if (state.mode === 'sum') setMode('video');
+  if (state.view !== 'compare') setPlaying(true);
+  render();
+}
+
+/** How far the object should have moved between the two chosen dates, from its catalogue motion. */
+function rangeNote() {
+  const object = followedObject();
+  const speed = Math.hypot(object?.pmra ?? 0, object?.pmdec ?? 0) / 1000;
+  const played = playedPositions();
+  if (speed < MIN_NOTED_SPEED || played.length < 2) return '';
+  const steps = sequence();
+  const years = Math.abs(yearOf(steps[played.at(-1)]) - yearOf(steps[played[0]]));
+  return t('rangeNote', { years: number(years, 1), shift: number(speed * years, 0) });
 }
 
 function setMode(mode) {
@@ -610,6 +677,7 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
     session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
     spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
     auto: { spectrum: false, final: false }, view: 'one', follow: false, lock: null, picking: false, candidates: null,
+    range: { from: null, to: null, endpoints: true },
   });
   refreshFollowUi();
   cache.clear();
@@ -647,6 +715,14 @@ async function openStatic(target, session) {
   state.frames = frames;
   state.visits = visitsOf(frames);
   state.chart = target.kind === 'variable' ? 'curve' : 'spectrum';
+  if (isFastMover(target)) {
+    state.wiseFrame = await api.getStaticWise(target.key, meta);
+    if (session !== state.session) return;
+    $('wise').checked = true;
+  }
+  const steps = sequence();
+  state.range = { from: steps[0]?.key ?? null, to: steps.at(-1)?.key ?? null, endpoints: true };
+  state.position = 0;
   renderDates();
   setPlaying(true);
   render();
@@ -666,6 +742,7 @@ async function openLive(ra, dec, fov, session) {
 
 function resetPanels(target, fov) {
   showPlate(true);
+  document.body.dataset.kind = target.kind ?? 'custom';
   $('fov').value = String(fov);
   $('wise').checked = false;
   $('gaia').checked = false;
@@ -682,7 +759,7 @@ function resetPanels(target, fov) {
 
 function describeTarget(target) {
   const { ra, dec } = centreOf(target);
-  $('object-name').textContent = target.name;
+  $('object-name').textContent = displayName(target);
   $('object-kind').textContent = t(`kind${target.kind ?? 'custom'}`);
   $('object-coords').textContent = `RA ${ra.toFixed(4)}°, Dec ${dec >= 0 ? '+' : ''}${dec.toFixed(4)}°`;
 }
@@ -725,7 +802,7 @@ function autoMeasure() {
   if (!auto.final && finished) {
     auto.final = true;
     spectrumOfTarget();
-    if (state.target.pmra || state.target.pmdec) measureMotion();
+    if (state.target.pmra || state.target.pmdec || state.target.kind === 'variable') measureMotion();
   }
 }
 
@@ -977,6 +1054,11 @@ function customTarget(ra, dec, fov) {
 async function search(text) {
   const query = text.trim();
   if (!query) return;
+  const named = findByName(query, state.presets);
+  if (named) {
+    openNamed(named);
+    return;
+  }
   try {
     const { ra, dec } = await api.parsePosition(query);
     openTarget(customTarget(ra, dec));
@@ -984,11 +1066,25 @@ async function search(text) {
   } catch (error) {
     if (error.status !== 422) throw error;
   }
+  showMessage(t('searchingName'));
   try {
-    openTarget({ kind: 'custom', ...(await api.resolveName(query)) });
+    const found = await api.resolveName(query);
+    showMessage(null);
+    openTarget({ kind: 'custom', pmra: 0, pmdec: 0, epoch: CUSTOM_EPOCH, ...found });
   } catch (error) {
     showMessage(error.status === 404 ? t('notFound') : error.message);
   }
+}
+
+function openNamed(entry) {
+  if (entry.key) {
+    diveInto(entry);
+    return;
+  }
+  const language = currentLanguage();
+  openTarget({
+    pmra: 0, pmdec: 0, epoch: 2000, ...entry, name: (language === 'ru' && entry.ru) || entry.name,
+  }, entry.fov ?? DEFAULT_FOV);
 }
 
 function showMessage(message) {
@@ -1080,6 +1176,9 @@ function bindControls() {
   $('chooser-close').addEventListener('click', unlockCamera);
   $('try-compare').addEventListener('click', compareWithPast);
   $('try-bands').addEventListener('click', sweepBands);
+  $('range-from').addEventListener('change', () => setRange({ from: $('range-from').value }));
+  $('range-to').addEventListener('change', () => setRange({ to: $('range-to').value }));
+  $('endpoints').addEventListener('click', () => setRange({ endpoints: !state.range.endpoints }));
   $('views').addEventListener('click', (event) => event.target.dataset.view && setView(event.target.dataset.view));
   $('measure').addEventListener('click', measureMotion);
   $('chart-kind').addEventListener('click', (event) => {
@@ -1125,7 +1224,7 @@ const BLINK_MS = 900;
 /** A looping pair of real plates; which one shows is driven by one attribute on the body. */
 function blinkTile(key, thumbs) {
   const tile = document.createElement('div');
-  tile.className = 'blink';
+  tile.className = thumbs.kind === 'colour' ? 'blink place' : 'blink';
   thumbs.frames.forEach((frame, index) => {
     const side = index ? 'b' : 'a';
     const image = document.createElement('img');
@@ -1155,13 +1254,15 @@ function resultOf(key) {
   return state.results.find((item) => item.key === key);
 }
 
+const displayName = (entry) => (currentLanguage() === 'ru' && entry.ru) || entry.name;
+
 function presetCard(preset) {
   const result = resultOf(preset.key);
   const button = document.createElement('button');
   button.type = 'button';
   button.style.setProperty('--tint', NEUTRAL_TINT);
   const name = document.createElement('strong');
-  name.textContent = preset.name;
+  name.textContent = displayName(preset);
   const hook = document.createElement('small');
   hook.textContent = t(`hook_${preset.key}`);
   const words = document.createElement('span');
@@ -1172,8 +1273,28 @@ function presetCard(preset) {
   return button;
 }
 
+const CATEGORIES = ['challenge', 'stars', 'galaxies', 'nebulae', 'clusters'];
+
 function buildPresets() {
-  $('presets').replaceChildren(...state.presets.map(presetCard));
+  const tabs = CATEGORIES.map((category) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.textContent = t(`category_${category}`);
+    tab.setAttribute('aria-pressed', String(state.category === category));
+    tab.addEventListener('click', () => {
+      state.category = category;
+      buildPresets();
+    });
+    return tab;
+  });
+  $('categories').replaceChildren(...tabs);
+  const shown = state.presets.filter((preset) => preset.category === state.category);
+  $('presets').replaceChildren(...shown.map(presetCard));
+  $('name-list').replaceChildren(...suggestions(state.presets, currentLanguage()).map((name) => {
+    const option = document.createElement('option');
+    option.value = name;
+    return option;
+  }));
 }
 
 function buildProof() {
@@ -1195,7 +1316,7 @@ function resultRow(preset) {
     })
     : t('noneMeasured');
   const cells = [
-    preset.name,
+    displayName(preset),
     `${result.frames} / ${result.available}`,
     String(result.dates),
     result.measured > MOTION_SIGNIFICANCE * result.error
@@ -1215,7 +1336,7 @@ function resultRow(preset) {
 function buildResults() {
   $('results-body').replaceChildren(...state.results.flatMap((result) => {
     const preset = state.presets.find((item) => item.key === result.key);
-    return preset ? [resultRow(preset)] : [];
+    return preset && result.measured !== undefined ? [resultRow(preset)] : [];
   }));
 }
 

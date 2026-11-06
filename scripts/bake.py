@@ -7,13 +7,13 @@ import time
 
 from backend import wise
 from backend.jobs import Job
-from backend.presets import PRESETS
+from backend.presets import ALL_TARGETS
 
 
 
 def bake(preset) -> None:
     ra, dec = preset.centre()
-    job = Job(ra, dec, preset.fov)
+    job = Job(ra, dec, preset.fov, limit=preset.limit)
     started = time.time()
     job.run()
     wise.frame(job.grid)
@@ -26,6 +26,6 @@ def bake(preset) -> None:
 
 if __name__ == "__main__":
     wanted = set(sys.argv[1:])
-    for preset in sorted(PRESETS, key=lambda item: item.key != "wise0855"):
+    for preset in sorted(ALL_TARGETS, key=lambda item: item.key != "wise0855"):
         if not wanted or preset.key in wanted:
             bake(preset)

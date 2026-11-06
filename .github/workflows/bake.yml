@@ -34,16 +34,16 @@ jobs:
           BLINK_CACHE: data
         run: |
           python -m scripts.sky_tiles static/data/sky
-          python -m scripts.build_site static/data
           python -m scripts.write_targets static/data
+          python -m scripts.build_site static/data
           node scripts/results.mjs static/data
       - name: Store frames
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data static/data
+          git add static/data
           git diff --cached --quiet || git commit -m "chore: update baked frames"
-          git pull --rebase origin main
+          git pull --rebase --autostash origin main
           git push
       - name: Publish
         env:
