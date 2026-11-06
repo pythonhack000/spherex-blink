@@ -19,10 +19,10 @@ from backend.presets import PRESETS
 OUTPUT = Path(sys.argv[1] if len(sys.argv) > 1 else "static/data")
 NAN_CODE = -32768
 ENCODE_STEP = 1e-3  # asinh units per integer step: about 0.1% relative precision
-THUMB_SIZE = 480
+THUMB_SIZE = 960
 THUMB_QUALITY = 82
-BLOOM_RADIUS = 7
-BLOOM_STRENGTH = 0.7
+BLOOM_RADIUS = 9
+BLOOM_STRENGTH = 0.3
 LOW_PERCENTILE, HIGH_PERCENTILE = 25, 99.8
 ASINH_SOFTENING = 12
 FAST_MOVER_MAS = 1000
@@ -60,7 +60,8 @@ def hot_image(image: np.ndarray, tint, limits) -> Image.Image:
     rise = np.minimum(level / HOT_KNEE, 1)[..., None] * np.array(tint)
     burn = np.clip((level - HOT_KNEE) / (1 - HOT_KNEE), 0, 1)[..., None]
     rgb = (rise + (255 - rise) * burn).astype(np.uint8)[::-1]
-    picture = Image.fromarray(rgb).resize((THUMB_SIZE, THUMB_SIZE), Image.BICUBIC)
+    picture = Image.fromarray(rgb).resize((THUMB_SIZE, THUMB_SIZE), Image.LANCZOS)
+    picture = picture.filter(ImageFilter.UnsharpMask(radius=12, percent=90, threshold=2))
     glow = np.asarray(picture.filter(ImageFilter.GaussianBlur(BLOOM_RADIUS)), float) * BLOOM_STRENGTH
     return Image.fromarray(np.clip(np.asarray(picture, float) + glow, 0, 255).astype(np.uint8))
 

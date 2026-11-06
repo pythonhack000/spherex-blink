@@ -66,11 +66,19 @@
 
   <main id="observatory" class="observatory" hidden>
     <section class="plate-wrap">
-      <div class="plate-frame">
-        <canvas id="plate" width="1100" height="1100" tabindex="0"></canvas>
-        <p id="plate-date" class="plate-date"></p>
-        <p id="plate-empty" class="plate-empty" hidden></p>
+      <div class="plates">
+        <div class="plate-frame">
+          <canvas id="plate" width="1600" height="1600" tabindex="0"></canvas>
+          <p id="plate-date" class="plate-date"></p>
+          <p id="plate-empty" class="plate-empty" hidden></p>
+          <p class="plate-hint" data-t="zoomHint"></p>
+        </div>
+        <div id="second-frame" class="plate-frame" hidden>
+          <canvas id="plate-b" width="1600" height="1600"></canvas>
+          <p id="plate-date-b" class="plate-date"></p>
+        </div>
       </div>
+      <div id="arrays" class="arrays" role="group"></div>
     </section>
 
     <aside class="side">
@@ -93,29 +101,35 @@
         <p id="chart-note" class="note"></p>
       </section>
 
+      <div class="tools">
+        <div class="segment" role="group" id="modes">
+          <button type="button" data-mode="video" data-t="modeVideo"></button>
+          <button type="button" data-mode="sum" data-t="modeSum"></button>
+          <button type="button" data-mode="diff" data-t="modeDiff"></button>
+        </div>
+        <label class="tool"><span data-t="fieldOfView"></span>
+          <select id="fov">
+            <option value="0.05">3′</option>
+            <option value="0.1">6′</option>
+            <option value="0.2">12′</option>
+            <option value="0.5">30′</option>
+          </select>
+        </label>
+        <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
+        <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
+        <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
+      </div>
+      <p class="note"><span id="plate-info"></span> <span data-t="credit"></span></p>
+
     </aside>
 
     <footer class="deck">
       <div class="timeline">
         <button id="play" type="button" class="glow"></button>
-        <div id="dates" class="dates" role="group"></div>
-        <div class="tools">
-          <div class="segment" role="group" id="modes">
-            <button type="button" data-mode="video" data-t="modeVideo"></button>
-            <button type="button" data-mode="sum" data-t="modeSum"></button>
-            <button type="button" data-mode="diff" data-t="modeDiff"></button>
-          </div>
-          <label class="tool"><span data-t="fieldOfView"></span>
-            <select id="fov">
-              <option value="0.05">3′</option>
-              <option value="0.1">6′</option>
-              <option value="0.2">12′</option>
-              <option value="0.5">30′</option>
-            </select>
-          </label>
-          <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
-          <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
-          <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
+        <div id="dates" class="film" role="group"></div>
+        <div class="segment" role="group" id="views">
+          <button type="button" data-view="one" data-t="viewOne"></button>
+          <button type="button" data-view="compare" data-t="viewCompare"></button>
         </div>
       </div>
       <div class="bands">
@@ -126,7 +140,6 @@
         </div>
         <output id="band-label"></output>
       </div>
-      <p class="note"><span id="plate-info"></span> <span data-t="credit"></span></p>
     </footer>
   </main>
 

@@ -1,17 +1,18 @@
 // Draws the current stack on the plate canvas, with its overlays.
 import {
   asinhScale, channelWavelength, COMPOSITE, DETECTOR_RANGES, differenceLimit, positionAt, selectBand,
-  skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
+  sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
 } from './stack.js';
+import { fullView, plateToCanvas } from './viewport.js';
 
 const AMBER = [255, 184, 77];
 const BLUE = [92, 170, 255];
 const NEUTRAL = [235, 240, 248];
 const GAIA_FAINT_LIMIT = 19;
 const HOT_KNEE = 0.62;
-const BLOOM_ALPHA = 0.7;
+const BLOOM_ALPHA = 0.32;
 const BLOOM_LAYER_SIZE = 256;
-const BLOOM_LAYER_BLUR = 3.5;
+const BLOOM_LAYER_BLUR = 2.5;
 const PATH_START_YEAR = 2010.5;
 const SCALE_BAR_ARCSEC = [120, 60, 30, 15, 10];
 
@@ -73,14 +74,18 @@ function hotColor(tint, level) {
 }
 
 export function paintMono(buffer, size, image, limits, tint) {
+  const display = sharpenForDisplay(image, size);
   paint(buffer, size, (pixel) => {
-    const value = image[pixel];
+    const value = display[pixel];
     if (Number.isNaN(value)) return [0, 0, 0, 0];
     return hotColor(tint, asinhScale(value, limits));
   });
 }
 
-export function paintComposite(buffer, size, { red, green, blue }, limits) {
+export function paintComposite(buffer, size, stacks, limits) {
+  const red = sharpenForDisplay(stacks.red, size);
+  const green = sharpenForDisplay(stacks.green, size);
+  const blue = sharpenForDisplay(stacks.blue, size);
   paint(buffer, size, (pixel) => {
     if (Number.isNaN(red[pixel]) && Number.isNaN(green[pixel]) && Number.isNaN(blue[pixel])) return [0, 0, 0, 0];
     const part = (image, limit) => (Number.isNaN(image[pixel]) ? 0 : asinhScale(image[pixel], limit) * 255);
@@ -122,14 +127,19 @@ export function limitsFor(stacks) {
 
 export function drawPlate(canvas, buffer, overlay) {
   const context = canvas.getContext('2d');
-  const scale = canvas.width / overlay.grid.n;
+  const size = overlay.grid.n;
+  const view = overlay.view ?? fullView(size);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
   context.fillStyle = '#060b16';
   context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(buffer, 0, 0, canvas.width, canvas.height);
-  drawBloom(context, buffer, canvas);
-  const toCanvas = ({ x, y }) => ({ x: (x + 0.5) * scale, y: canvas.height - (y + 0.5) * scale });
+  const span = size / view.zoom;
+  const source = [view.x - span / 2, size - view.y - span / 2, span, span];
+  context.drawImage(buffer, ...source, 0, 0, canvas.width, canvas.height);
+  drawBloom(context, buffer, canvas, source, size);
+  if (overlay.bare) return;
+  const toCanvas = ({ x, y }) => plateToCanvas(view, size, canvas.width, x, y);
+  const scale = (canvas.width / size) * view.zoom;
   drawGaia(context, overlay, toCanvas);
   drawTrack(context, overlay, toCanvas);
   drawExpected(context, overlay, toCanvas, scale);
@@ -142,15 +152,16 @@ bloomLayer.width = BLOOM_LAYER_SIZE;
 bloomLayer.height = BLOOM_LAYER_SIZE;
 
 /** Lets bright stars glow. The blur runs on a small copy, because blurring a full plate is slow. */
-function drawBloom(context, buffer, canvas) {
+function drawBloom(context, buffer, canvas, source, size) {
   const layer = bloomLayer.getContext('2d');
   layer.clearRect(0, 0, BLOOM_LAYER_SIZE, BLOOM_LAYER_SIZE);
   layer.filter = `blur(${BLOOM_LAYER_BLUR}px)`;
   layer.drawImage(buffer, 0, 0, BLOOM_LAYER_SIZE, BLOOM_LAYER_SIZE);
+  const ratio = BLOOM_LAYER_SIZE / size;
   context.save();
   context.globalCompositeOperation = 'lighter';
   context.globalAlpha = BLOOM_ALPHA;
-  context.drawImage(bloomLayer, 0, 0, canvas.width, canvas.height);
+  context.drawImage(bloomLayer, ...source.map((value) => value * ratio), 0, 0, canvas.width, canvas.height);
   context.restore();
 }
 
