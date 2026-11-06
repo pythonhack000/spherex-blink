@@ -1,6 +1,9 @@
 // Interface text in English and Russian.
 const TEXT = {
   en: {
+    viewOne: 'One plate',
+    viewCompare: 'Side by side',
+    zoomHint: 'Scroll to zoom, drag to move, click a spot for its spectrum',
     heroTitle: 'What moved?',
     heroSub: 'Pluto was found by flipping between two photographs. This site does the same with NASA SPHEREx, for any point in the infrared sky.',
     heroTour: 'Watch it in 60 seconds',
@@ -91,6 +94,9 @@ const TEXT = {
     credit: 'Data: NASA SPHEREx, AllWISE and ESA Gaia DR3, served by NASA/IPAC IRSA. Colours are false colour.',
   },
   ru: {
+    viewOne: 'Один снимок',
+    viewCompare: 'Рядом',
+    zoomHint: 'Колёсико: зум, перетаскивание: сдвиг, клик: спектр точки',
     heroTitle: 'Что сдвинулось?',
     heroSub: 'Плутон нашли, переключаясь между двумя снимками. Этот сайт делает то же самое со снимками NASA SPHEREx для любой точки инфракрасного неба.',
     heroTour: 'Смотреть за 60 секунд',

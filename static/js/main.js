@@ -7,8 +7,9 @@ import {
   drawPlate, limitsFor, paintComposite, paintDifference, paintMono, stacksFor, StackCache, tintFor,
 } from './plate.js';
 import { createSky } from './sky.js';
+import { canvasToPlate, fullView, panBy, zoomAt } from './viewport.js';
 import {
-  channelWavelength, CHANNELS, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, resolveBand, selectBand,
+  channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, resolveBand, selectBand,
   visitsOf, wavelengthColor,
 } from './stack.js';
 import { runTour } from './tour.js';
@@ -25,7 +26,10 @@ const AUTO_SPECTRUM_FRAMES = 12;
 const FULL_RANGE_LABEL = '0.75–5 μm';
 const COMPOSITE_COLOR = [255, 184, 77];
 const COUNT_UP_MS = 900;
+const DRAG_THRESHOLD_PX = 4;
 const DIVE_FOV = 0.4;
+const ARRAY_CANVAS_SIZE = 420;
+const FILM_CANVAS_SIZE = 160;
 const MOTION_PAINT_DELAY_MS = 40;
 
 const $ = (id) => document.getElementById(id);
@@ -52,6 +56,9 @@ const state = {
   pick: null,
   track: null,
   playing: false,
+  view: 'one',
+  compare: { a: 0, b: 0, next: 'a' },
+  plateView: { zoom: 1, x: 60, y: 60 },
   session: 0,
   auto: { spectrum: false, final: false },
 };
@@ -83,23 +90,92 @@ function midYear() {
 
 // ---------- Drawing ----------
 
-function render() {
-  if (!state.job) return;
-  const size = state.job.n;
-  const step = currentStep();
-  const shown = paintStep(step, size);
-  $('plate-empty').hidden = shown || !state.frames.length;
-  $('plate-empty').textContent = t('noFrames');
-  drawPlate($('plate'), buffer, {
+function overlayFor(step, extra = {}) {
+  return {
     grid: state.job,
     year: step ? yearOf(step) : midYear(),
     target: state.target,
     gaia: $('gaia').checked ? state.gaia : null,
     track: state.track,
     pick: state.pick,
-  });
-  describeStep(step);
+    view: state.plateView,
+    ...extra,
+  };
+}
+
+function stepLabel(step) {
+  if (!step) return t('allDates');
+  return step.key === WISE_STEP ? 'AllWISE 2010' : formatDate(mjdToDate(step.mjd));
+}
+
+function render() {
+  if (!state.job) return;
+  const size = state.job.n;
+  const step = currentStep();
+  const comparing = state.view === 'compare';
+  const left = comparing ? compareStep(state.compare.a) : step;
+  const shown = paintStep(left, size, state.band);
+  $('plate-empty').hidden = shown || !state.frames.length;
+  $('plate-empty').textContent = t('noFrames');
+  drawPlate($('plate'), buffer, overlayFor(left));
+  $('plate-date').textContent = stepLabel(left);
+  $('second-frame').hidden = !comparing;
+  $('arrays').hidden = comparing;
+  if (comparing) renderSecond(size);
+  else renderArrays(left, size);
+  document.body.dataset.layout = state.view;
+  describeStep(left);
+  markFilm();
   paintAmbient();
+}
+
+function compareStep(index) {
+  const steps = sequence();
+  return steps.length ? steps[Math.min(index, steps.length - 1)] : null;
+}
+
+function renderSecond(size) {
+  const right = compareStep(state.compare.b);
+  paintStep(right, size, state.band);
+  drawPlate($('plate-b'), buffer, overlayFor(right));
+  $('plate-date-b').textContent = stepLabel(right);
+}
+
+/** Six live plates, one per detector array, for the date on the main plate. */
+function renderArrays(step, size) {
+  const available = step?.key === WISE_STEP ? null : step;
+  for (const tile of $('arrays').children) {
+    const band = { kind: 'detector', detector: Number(tile.dataset.detector) };
+    const painted = paintStep(available, size, band);
+    if (painted) drawPlate(tile.querySelector('canvas'), buffer, overlayFor(available, { bare: true }));
+    tile.classList.toggle('empty', !painted);
+    tile.setAttribute(
+      'aria-pressed',
+      String(state.band.kind === 'detector' && state.band.detector === band.detector),
+    );
+  }
+}
+
+function buildArrays() {
+  const tiles = Object.entries(DETECTOR_RANGES).map(([detector, [low, high]]) => {
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.dataset.detector = detector;
+    const color = wavelengthColor(Math.sqrt(low * high)).join(', ');
+    tile.style.setProperty('--tint', color);
+    const canvas = document.createElement('canvas');
+    canvas.width = ARRAY_CANVAS_SIZE;
+    canvas.height = ARRAY_CANVAS_SIZE;
+    const label = document.createElement('b');
+    label.textContent = `${low}–${high} μm`;
+    tile.append(canvas, label);
+    tile.addEventListener('click', () => {
+      const same = state.band.kind === 'detector' && state.band.detector === Number(detector);
+      setBand(same ? { kind: 'composite' } : { kind: 'detector', detector: Number(detector) });
+    });
+    return tile;
+  });
+  $('arrays').replaceChildren(...tiles);
 }
 
 /** The page's background glow is the current picture itself, heavily blurred. */
@@ -108,11 +184,11 @@ function paintAmbient() {
   ambient.getContext('2d').drawImage($('plate'), 0, 0, ambient.width, ambient.height);
 }
 
-function paintStep(step, size) {
+function paintStep(step, size, wanted) {
   if (step?.key === WISE_STEP) return paintWise(step, size);
-  if (state.mode === 'diff') return paintDiffStep(step, size);
+  if (state.mode === 'diff') return paintDiffStep(step, size, wanted);
   const frames = step ? step.frames : state.frames;
-  const band = resolveBand(frames, state.band);
+  const band = resolveBand(frames, wanted);
   if (!selectBand(frames, band).length) return false;
   const key = step ? `v${step.key}` : ALL_DATES;
   const stacks = stacksFor(frames, band, size, state.excludeFlags, cache, key);
@@ -134,8 +210,8 @@ function paintWise(step, size) {
   return true;
 }
 
-function paintDiffStep(step, size) {
-  const band = state.band.kind === 'composite' ? { kind: 'all' } : state.band;
+function paintDiffStep(step, size, wanted) {
+  const band = wanted.kind === 'composite' ? { kind: 'all' } : wanted;
   const first = state.visits[0];
   const current = step ?? state.visits.at(-1);
   if (!first || !current) return false;
@@ -175,19 +251,65 @@ function setPressed(container, attribute, value) {
   }
 }
 
-function dateButton(label, position) {
+function filmTile(step, position) {
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = label;
-  button.setAttribute('aria-pressed', String(state.position === position));
-  button.addEventListener('click', () => selectPosition(position));
+  button.className = 'film-tile';
+  button.dataset.position = String(position);
+  const canvas = document.createElement('canvas');
+  canvas.width = FILM_CANVAS_SIZE;
+  canvas.height = FILM_CANVAS_SIZE;
+  const size = state.job.n;
+  if (paintStep(step, size, { kind: 'composite' })) drawPlate(canvas, buffer, { grid: state.job, bare: true });
+  const label = document.createElement('span');
+  label.textContent = stepLabel(step);
+  button.append(canvas, label);
+  button.addEventListener('click', () => pickFilm(position));
   return button;
 }
 
 function renderDates() {
-  const buttons = sequence().map((step, index) =>
-    dateButton(step.key === WISE_STEP ? '2010' : formatDate(mjdToDate(step.mjd)), index));
-  $('dates').replaceChildren(...buttons, dateButton(t('allDates'), ALL_DATES));
+  if (!state.job) {
+    $('dates').replaceChildren();
+    return;
+  }
+  const tiles = sequence().map((step, index) => filmTile(step, index));
+  $('dates').replaceChildren(...tiles, filmTile(null, ALL_DATES));
+  markFilm();
+}
+
+function markFilm() {
+  const comparing = state.view === 'compare';
+  for (const tile of $('dates').children) {
+    const position = tile.dataset.position === ALL_DATES ? ALL_DATES : Number(tile.dataset.position);
+    const active = comparing
+      ? position === state.compare.a || position === state.compare.b
+      : position === state.position;
+    tile.setAttribute('aria-pressed', String(active));
+  }
+}
+
+/** In comparison, each pick replaces the plate that was not picked last. */
+function pickFilm(position) {
+  if (state.view !== 'compare') {
+    selectPosition(position);
+    return;
+  }
+  if (position === ALL_DATES) return;
+  const side = state.compare.next;
+  state.compare = { ...state.compare, [side]: position, next: side === 'a' ? 'b' : 'a' };
+  render();
+}
+
+function setView(view) {
+  state.view = view;
+  setPressed($('views'), 'view', view);
+  if (view === 'compare') {
+    setPlaying(false);
+    if (state.mode !== 'video') setMode('video');
+    state.compare = { a: 0, b: Math.max(0, sequence().length - 1), next: 'a' };
+  }
+  render();
 }
 
 function selectPosition(position) {
@@ -261,10 +383,11 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   Object.assign(state, {
     session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
     spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
-    auto: { spectrum: false, final: false },
+    auto: { spectrum: false, final: false }, view: 'one',
   });
   cache.clear();
   resetPanels(target, fov);
+  setPressed($('views'), 'view', 'one');
   const { ra, dec } = centreOf(target);
   sky?.goTo(ra, dec);
   writeUrl();
@@ -282,6 +405,7 @@ async function openStatic(target, session) {
   if (session !== state.session) return;
   state.staticMeta = meta;
   state.job = { ...meta.grid, status: 'done', available: meta.available, total: meta.total, done: frames.length, failed: 0 };
+  state.plateView = fullView(meta.grid.n);
   state.frames = frames;
   state.visits = visitsOf(frames);
   state.chart = target.kind === 'variable' ? 'curve' : 'spectrum';
@@ -295,6 +419,7 @@ async function openStatic(target, session) {
 async function openLive(ra, dec, fov, session) {
   state.job = await api.observe(ra, dec, fov);
   if (session !== state.session) return;
+  state.plateView = fullView(state.job.n);
   setPlaying(true);
   await followJob(session);
 }
@@ -441,13 +566,52 @@ function bandPoints(points) {
   return points.filter((point) => point.detector === detector);
 }
 
-function pickFromPlate(event) {
-  if (!state.job) return;
-  const box = $('plate').getBoundingClientRect();
-  const x = ((event.clientX - box.left) / box.width) * state.job.n - 0.5;
-  const y = (1 - (event.clientY - box.top) / box.height) * state.job.n - 0.5;
-  const position = pixelToSky(x, y, state.job);
+function plateFractions(canvas, event) {
+  const box = canvas.getBoundingClientRect();
+  return { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height };
+}
+
+function pickAt(canvas, event) {
+  const fraction = plateFractions(canvas, event);
+  const plate = canvasToPlate(state.plateView, state.job.n, fraction.x, fraction.y);
+  const position = pixelToSky(plate.x - 0.5, plate.y - 0.5, state.job);
   measureSpectrum(position, position);
+}
+
+/** Wheel zooms, dragging pans, a click measures the spot, a double click resets the view. */
+function bindPlateGestures(canvas) {
+  let drag = null;
+  canvas.addEventListener('wheel', (event) => {
+    if (!state.job) return;
+    event.preventDefault();
+    const fraction = plateFractions(canvas, event);
+    const plate = canvasToPlate(state.plateView, state.job.n, fraction.x, fraction.y);
+    state.plateView = zoomAt(state.plateView, state.job.n, plate.x, plate.y, event.deltaY);
+    render();
+  }, { passive: false });
+  canvas.addEventListener('pointerdown', (event) => {
+    drag = { x: event.clientX, y: event.clientY, moved: false };
+    canvas.setPointerCapture(event.pointerId);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (!drag || !state.job) return;
+    const distance = Math.hypot(event.clientX - drag.x, event.clientY - drag.y);
+    if (!drag.moved && distance < DRAG_THRESHOLD_PX) return;
+    const box = canvas.getBoundingClientRect();
+    const perPixel = state.job.n / state.plateView.zoom / box.width;
+    state.plateView = panBy(state.plateView, state.job.n, (event.clientX - drag.x) * perPixel, (drag.y - event.clientY) * perPixel);
+    drag = { x: event.clientX, y: event.clientY, moved: true };
+    render();
+  });
+  canvas.addEventListener('pointerup', (event) => {
+    if (drag && !drag.moved && state.job) pickAt(canvas, event);
+    drag = null;
+  });
+  canvas.addEventListener('dblclick', () => {
+    if (!state.job) return;
+    state.plateView = fullView(state.job.n);
+    render();
+  });
 }
 
 function spectrumOfTarget() {
@@ -637,7 +801,7 @@ const demoActions = {
   async showWise() {
     $('wise').checked = true;
     await toggleWise();
-    setPlaying(true);
+    setView('compare');
   },
 };
 
@@ -660,7 +824,9 @@ function bindControls() {
     state.excludeFlags = $('flags').checked;
     render();
   });
-  $('plate').addEventListener('click', pickFromPlate);
+  bindPlateGestures($('plate'));
+  bindPlateGestures($('plate-b'));
+  $('views').addEventListener('click', (event) => event.target.dataset.view && setView(event.target.dataset.view));
   $('measure').addEventListener('click', measureMotion);
   $('chart-kind').addEventListener('click', (event) => {
     if (!event.target.dataset.chart) return;
@@ -806,8 +972,10 @@ async function start() {
   setLanguage(currentLanguage());
   translate();
   buildBandScale();
+  buildArrays();
   bindControls();
   setPressed($('modes'), 'mode', 'video');
+  setPressed($('views'), 'view', 'one');
   setPressed($('chart-kind'), 'chart', 'spectrum');
   $('composite').setAttribute('aria-pressed', 'true');
   state.presets = await api.getTargets();
