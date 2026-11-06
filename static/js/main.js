@@ -943,7 +943,9 @@ function resultRow(preset) {
     preset.name,
     `${result.frames} / ${result.available}`,
     String(result.dates),
-    `${number(result.measured)} ± ${number(result.error)}`,
+    result.measured > MOTION_SIGNIFICANCE * result.error
+      ? `${number(result.measured)} ± ${number(result.error)}`
+      : t('notDetected'),
     result.catalog === null ? t('noneMeasured') : number(result.catalog),
     result.control === null ? t('noneMeasured') : number(result.control),
     brightness,
