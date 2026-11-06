@@ -495,9 +495,20 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   try {
     if (target.key && fov === target.fov) await openStatic(target, session);
     else await openLive(ra, dec, fov, session);
-  } catch (error) {
-    if (session === state.session) $('progress').textContent = error.message;
+  } catch {
+    if (session === state.session) showLoadProblem(target, fov);
   }
+}
+
+function showLoadProblem(target, fov) {
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'glow';
+  retry.textContent = t('retry');
+  retry.addEventListener('click', () => openTarget(target, fov));
+  const message = document.createElement('p');
+  message.textContent = t('loadFailed');
+  $('progress').replaceChildren(message, retry);
 }
 
 /** The challenge targets ship with the site, so they open at once with no server. */

@@ -3,6 +3,8 @@ import { decodeCodes, decodeFrames, decodeStaticFrames } from './stack.js';
 
 const LIVE_SERVER = 'https://spherex-blink.onrender.com';
 const GZIP_MAGIC = [0x1f, 0x8b];
+const STATIC_ATTEMPTS = 4;
+const STATIC_RETRY_MS = 800;
 
 /** On GitHub Pages the live server is elsewhere; when served by it, it is this same origin. */
 export const API_BASE = location.hostname.endsWith('github.io') ? LIVE_SERVER : '';
@@ -40,16 +42,26 @@ export async function getWiseFrame(id, size) {
 
 // ---------- Static data shipped with the site ----------
 
+/** One network hiccup must not leave an empty page, so static files are retried. */
+async function fetchStatic(path) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const response = await fetch(`data/${path}`);
+      if (response.ok) return response;
+      if (attempt >= STATIC_ATTEMPTS) throw new Error(`Missing site data: ${path}`);
+    } catch (error) {
+      if (attempt >= STATIC_ATTEMPTS) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, STATIC_RETRY_MS * attempt));
+  }
+}
+
 async function staticJson(path) {
-  const response = await fetch(`data/${path}`);
-  if (!response.ok) throw new Error(`Missing site data: ${path}`);
-  return response.json();
+  return (await fetchStatic(path)).json();
 }
 
 async function staticBinary(path) {
-  const response = await fetch(`data/${path}`);
-  if (!response.ok) throw new Error(`Missing site data: ${path}`);
-  const buffer = await response.arrayBuffer();
+  const buffer = await (await fetchStatic(path)).arrayBuffer();
   const start = new Uint8Array(buffer, 0, 2);
   if (start[0] !== GZIP_MAGIC[0] || start[1] !== GZIP_MAGIC[1]) return buffer;
   const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
