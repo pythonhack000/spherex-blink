@@ -1,7 +1,22 @@
-// The all-sky map, using Aladin Lite with AllWISE tiles proxied by our own server.
+// The all-sky map, using Aladin Lite with AllWISE tiles.
+import { API_BASE } from './api.js';
+
 const ALADIN_URL = 'https://cdn.jsdelivr.net/npm/aladin-lite@3.8.2/dist/aladin.js';
+const TILES_FROM_CDS = 'https://alasky.cds.unistra.fr/AllWISE/RGB-W4-W2-W1';
+const PROBE_TIMEOUT_MS = 2500;
 const WHOLE_SKY_FOV = 240;
 const DIVE_SECONDS = 3;
+
+/** CDS is fastest, but some networks cannot reach it; then our server proxies the tiles. */
+async function chooseTiles() {
+  try {
+    const response = await fetch(`${TILES_FROM_CDS}/properties`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+    if (response.ok) return TILES_FROM_CDS;
+  } catch {
+    // Unreachable from this network: use the proxy below.
+  }
+  return `${API_BASE || location.origin}/hips`;
+}
 
 /** Falls back to a passive object if the map library or WebGL is unavailable. */
 export async function createSky(containerId, onSelect) {
@@ -20,7 +35,7 @@ export async function createSky(containerId, onSelect) {
     return unavailable;
   }
   const map = A.aladin(`#${containerId}`, {
-    survey: `${location.origin}/hips`,
+    survey: await chooseTiles(),
     fov: WHOLE_SKY_FOV,
     projection: 'AIT',
     cooFrame: 'GAL',

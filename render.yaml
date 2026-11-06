@@ -3,7 +3,7 @@ services:
     name: spherex-blink
     runtime: docker
     plan: free
-    healthCheckPath: /api/presets
+    healthCheckPath: /api/parse?text=10+10
     envVars:
       - key: BLINK_WORKERS
         value: "4"

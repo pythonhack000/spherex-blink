@@ -20,17 +20,48 @@
       <input id="search-input" type="text" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
       <button type="submit" data-t="open"></button>
     </form>
-    <button id="tour" type="button" class="glow" data-t="tour"></button>
+    <button id="tour" type="button" class="ghost" data-t="tour"></button>
     <button id="language" type="button" class="ghost" aria-label="Language">RU</button>
   </header>
 
   <p id="caption" class="caption" hidden aria-live="polite"></p>
 
   <section id="hero" class="hero">
-    <h1 data-t="heroTitle"></h1>
-    <p class="hero-sub" data-t="heroSub"></p>
-    <button id="open-here" type="button" class="glow" hidden data-t="openHere"></button>
+    <div class="hero-main">
+      <div class="hero-words">
+        <h1 data-t="heroTitle"></h1>
+        <p class="hero-sub" data-t="heroSub"></p>
+        <div class="hero-actions">
+          <button id="hero-tour" type="button" class="glow big" data-t="heroTour"></button>
+          <button id="open-here" type="button" class="ghost big" hidden data-t="openHere"></button>
+        </div>
+      </div>
+      <figure id="proof" class="proof" hidden>
+        <div id="proof-plate"></div>
+        <figcaption data-t="proofCaption"></figcaption>
+      </figure>
+    </div>
     <nav id="presets" class="presets" aria-label="Targets"></nav>
+  </section>
+
+  <section id="about" class="about">
+    <h2 data-t="resultsTitle"></h2>
+    <p class="lead" data-t="resultsLead"></p>
+    <div class="table-wrap">
+      <table class="results">
+        <thead><tr>
+          <th data-t="colTarget"></th><th data-t="colFrames"></th><th data-t="colDates"></th>
+          <th data-t="colMeasured"></th><th data-t="colCatalogue"></th><th data-t="colField"></th><th data-t="colBrightness"></th>
+        </tr></thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </div>
+    <div class="columns">
+      <article><h3 data-t="doTitle"></h3><p data-t="doText"></p></article>
+      <article><h3 data-t="howTitle"></h3><p data-t="howText"></p></article>
+      <article><h3 data-t="limitsTitle"></h3><p data-t="limitsText"></p></article>
+    </div>
+    <p class="note" data-t="credit"></p>
   </section>
 
   <main id="observatory" class="observatory" hidden>

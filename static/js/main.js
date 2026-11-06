@@ -1,6 +1,7 @@
 // Application state and wiring between the sky map, plate, charts and controls.
 import * as api from './api.js';
 import { drawLightCurve, drawSpectrum } from './chart.js';
+import { measureMotion as trackMotion, measureSpectrum as photometry } from './science.js';
 import { applyTranslations, currentLanguage, setLanguage, t } from './i18n.js';
 import {
   drawPlate, limitsFor, paintComposite, paintDifference, paintMono, stacksFor, StackCache, tintFor,
@@ -25,6 +26,7 @@ const FULL_RANGE_LABEL = '0.75–5 μm';
 const COMPOSITE_COLOR = [255, 184, 77];
 const COUNT_UP_MS = 900;
 const DIVE_FOV = 0.4;
+const MOTION_PAINT_DELAY_MS = 40;
 
 const $ = (id) => document.getElementById(id);
 const buffer = document.createElement('canvas');
@@ -32,6 +34,8 @@ const cache = new StackCache();
 
 const state = {
   presets: [],
+  results: [],
+  staticMeta: null,
   target: null,
   job: null,
   frames: [],
@@ -251,8 +255,8 @@ const centreOf = (target) => ({ ra: target.centreRa ?? target.ra, dec: target.ce
 async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   const session = state.session + 1;
   Object.assign(state, {
-    session, target, job: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [], spectrum: null,
-    spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
+    session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
+    spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
     auto: { spectrum: false, final: false },
   });
   cache.clear();
@@ -261,13 +265,33 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
   sky?.goTo(ra, dec);
   writeUrl();
   try {
-    state.job = await api.observe(ra, dec, fov);
-    if (session !== state.session) return;
-    setPlaying(true);
-    await followJob(session);
+    if (target.key && fov === target.fov) await openStatic(target, session);
+    else await openLive(ra, dec, fov, session);
   } catch (error) {
     if (session === state.session) $('progress').textContent = error.message;
   }
+}
+
+/** The challenge targets ship with the site, so they open at once with no server. */
+async function openStatic(target, session) {
+  const { meta, frames } = await api.getStaticTarget(target.key);
+  if (session !== state.session) return;
+  state.staticMeta = meta;
+  state.job = { ...meta.grid, status: 'done', available: meta.available, total: meta.total, done: frames.length, failed: 0 };
+  state.frames = frames;
+  state.visits = visitsOf(frames);
+  renderDates();
+  setPlaying(true);
+  render();
+  reportProgress(state.job);
+  autoMeasure();
+}
+
+async function openLive(ra, dec, fov, session) {
+  state.job = await api.observe(ra, dec, fov);
+  if (session !== state.session) return;
+  setPlaying(true);
+  await followJob(session);
 }
 
 function resetPanels(target, fov) {
@@ -278,7 +302,7 @@ function resetPanels(target, fov) {
   $('motion-result').replaceChildren();
   $('chart').replaceChildren();
   $('chart-note').textContent = t('clickHint');
-  $('progress').textContent = t('searching');
+  $('progress').textContent = target.key ? '' : t('searching');
   describeTarget(target);
   setPressed($('modes'), 'mode', 'video');
   setBand({ kind: 'composite' });
@@ -356,6 +380,8 @@ function showPlate(open) {
   document.body.dataset.view = open ? 'plate' : 'sky';
   $('observatory').hidden = !open;
   $('hero').hidden = open;
+  $('about').hidden = open;
+  scrollTo(0, 0);
   if (!open) {
     setPlaying(false);
     sky?.refresh();
@@ -378,17 +404,12 @@ const motionOf = (object) => ({
   epoch: object?.epoch ?? CUSTOM_EPOCH,
 });
 
-async function measureSpectrum(object, pick) {
+function measureSpectrum(object, pick) {
   state.pick = pick;
   state.spectrumObject = object;
-  $('chart-note').textContent = t('building');
+  state.spectrum = photometry(state.frames, state.job, { ...motionOf(object), ...object });
   render();
-  try {
-    state.spectrum = await api.getSpectrum(state.job.id, { ra: object.ra, dec: object.dec, ...motionOf(object) });
-    drawChart();
-  } catch (error) {
-    $('chart-note').textContent = error.message;
-  }
+  drawChart();
 }
 
 function drawChart() {
@@ -435,12 +456,14 @@ function activeDetectors() {
 
 async function measureMotion() {
   if (!state.job) return;
+  const session = state.session;
   const object = state.spectrumObject ?? state.target;
   $('motion-result').textContent = t('measuring');
+  // Let the message paint before the measurement occupies the page for a moment.
+  await new Promise((resolve) => setTimeout(resolve, MOTION_PAINT_DELAY_MS));
+  if (session !== state.session) return;
   try {
-    const result = await api.getMotion(state.job.id, {
-      ra: object.ra, dec: object.dec, ...motionOf(object), detectors: activeDetectors().join(','),
-    });
+    const result = trackMotion(state.frames, state.job, { ...motionOf(object), ...object }, activeDetectors());
     state.track = result.visits;
     showMotion(result);
     render();
@@ -498,7 +521,7 @@ function countUp(node, value, unit) {
 async function toggleGaia() {
   if ($('gaia').checked && !state.gaia.length && state.job) {
     try {
-      state.gaia = await api.getGaia(state.job.ra, state.job.dec, state.job.fov);
+      state.gaia = state.staticMeta?.gaia ?? (await api.getGaia(state.job.ra, state.job.dec, state.job.fov));
     } catch {
       $('progress').textContent = t('gaiaFailed');
       $('gaia').checked = false;
@@ -510,7 +533,9 @@ async function toggleGaia() {
 async function toggleWise() {
   if ($('wise').checked && !state.wiseFrame && state.job) {
     try {
-      state.wiseFrame = await api.getWiseFrame(state.job.id, state.job.n);
+      state.wiseFrame = state.staticMeta
+        ? await api.getStaticWise(state.target.key, state.staticMeta)
+        : await api.getWiseFrame(state.job.id, state.job.n);
     } catch {
       $('progress').textContent = t('wiseFailed');
       $('wise').checked = false;
@@ -566,7 +591,7 @@ function openFromUrl() {
   const fov = Number(params.get('fov')) || undefined;
   const preset = state.presets.find((item) => item.key === params.get('target'));
   if (preset) {
-    openTarget(preset, fov);
+    openTarget(preset, fov ?? preset.fov);
     return;
   }
   const ra = Number(params.get('ra'));
@@ -583,6 +608,12 @@ const demoActions = {
   showSky() {
     state.session += 1;
     showPlate(false);
+    $('about').hidden = true;
+  },
+  finish() {
+    state.session += 1;
+    showPlate(false);
+    showMessage(null);
   },
   skyGoTo: (ra, dec, fov) => sky?.flyTo(ra, dec, fov),
   open: (key) => openTarget(state.presets.find((item) => item.key === key)),
@@ -632,6 +663,7 @@ function bindControls() {
   });
   $('language').addEventListener('click', toggleLanguage);
   $('tour').addEventListener('click', () => runTour(demoActions, $('tour')));
+  $('hero-tour').addEventListener('click', () => runTour(demoActions, $('tour')));
   $('open-here').addEventListener('click', () => {
     const { ra, dec } = sky.selected();
     openTarget(customTarget(ra, dec));
@@ -647,7 +679,7 @@ function translate() {
 function toggleLanguage() {
   setLanguage(currentLanguage() === 'ru' ? 'en' : 'ru');
   translate();
-  buildPresets();
+  buildLanding();
   if (!state.job) return;
   describeTarget(state.target);
   renderDates();
@@ -657,8 +689,43 @@ function toggleLanguage() {
 }
 
 const PRESET_BAND = { barnard: 1.4, wise0855: 4.7, epsindib: 2.2, rwaur: 0.9, rdra: 3.4 };
+const BLINK_MS = 900;
+
+/** A looping pair of real plates; which one shows is driven by one attribute on the body. */
+function blinkTile(key, thumbs) {
+  const tile = document.createElement('div');
+  tile.className = 'blink';
+  thumbs.frames.forEach((frame, index) => {
+    const side = index ? 'b' : 'a';
+    const image = document.createElement('img');
+    image.src = `data/${key}/${frame.file}`;
+    image.alt = '';
+    image.className = `plate-${side}`;
+    const label = document.createElement('b');
+    label.className = `label-${side}`;
+    label.textContent = frame.label;
+    tile.style.setProperty(`--${side}x`, `${frame.x * 100}%`);
+    tile.style.setProperty(`--${side}y`, `${frame.y * 100}%`);
+    tile.append(image, label);
+  });
+  const ring = document.createElement('i');
+  ring.className = 'ring';
+  tile.append(ring);
+  return tile;
+}
+
+function startBlinking() {
+  setInterval(() => {
+    document.body.dataset.blink = document.body.dataset.blink === 'b' ? 'a' : 'b';
+  }, BLINK_MS);
+}
+
+function resultOf(key) {
+  return state.results.find((item) => item.key === key);
+}
 
 function presetCard(preset) {
+  const result = resultOf(preset.key);
   const button = document.createElement('button');
   button.type = 'button';
   button.style.setProperty('--tint', wavelengthColor(PRESET_BAND[preset.key]).join(', '));
@@ -666,13 +733,60 @@ function presetCard(preset) {
   name.textContent = preset.name;
   const hook = document.createElement('small');
   hook.textContent = t(`hook_${preset.key}`);
-  button.replaceChildren(name, hook);
+  const words = document.createElement('span');
+  words.className = 'card-words';
+  words.append(name, hook);
+  button.replaceChildren(...(result?.thumbs ? [blinkTile(preset.key, result.thumbs)] : []), words);
   button.addEventListener('click', () => diveInto(preset));
   return button;
 }
 
 function buildPresets() {
   $('presets').replaceChildren(...state.presets.map(presetCard));
+}
+
+function buildProof() {
+  const hero = resultOf('wise0855');
+  if (hero?.thumbs) $('proof-plate').replaceChildren(blinkTile('wise0855', hero.thumbs));
+  $('proof').hidden = !hero?.thumbs;
+}
+
+const number = (value, digits = 2) =>
+  new Intl.NumberFormat(currentLanguage(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+
+function resultRow(preset) {
+  const result = resultOf(preset.key);
+  const row = document.createElement('tr');
+  const brightness = result.variability && result.variability.faintest > 0
+    ? t('timesBrighter', { ratio: number(result.variability.brightest / result.variability.faintest, 1) })
+    : t('noneMeasured');
+  const cells = [
+    preset.name,
+    `${result.frames} / ${result.available}`,
+    String(result.dates),
+    `${number(result.measured)} ± ${number(result.error)}`,
+    result.catalog === null ? t('noneMeasured') : number(result.catalog),
+    result.control === null ? t('noneMeasured') : number(result.control),
+    brightness,
+  ];
+  for (const text of cells) {
+    const cell = row.insertCell();
+    cell.textContent = text;
+  }
+  return row;
+}
+
+function buildResults() {
+  $('results-body').replaceChildren(...state.results.flatMap((result) => {
+    const preset = state.presets.find((item) => item.key === result.key);
+    return preset ? [resultRow(preset)] : [];
+  }));
+}
+
+function buildLanding() {
+  buildPresets();
+  buildProof();
+  buildResults();
 }
 
 async function start() {
@@ -683,13 +797,15 @@ async function start() {
   setPressed($('modes'), 'mode', 'video');
   setPressed($('chart-kind'), 'chart', 'spectrum');
   $('composite').setAttribute('aria-pressed', 'true');
-  state.presets = await api.getPresets();
-  buildPresets();
+  state.presets = await api.getTargets();
+  state.results = await api.getResults().catch(() => []);
+  buildLanding();
+  startBlinking();
+  openFromUrl();
   sky = await createSky('sky', (ra, dec) => {
     $('open-here').hidden = false;
     $('open-here').textContent = `${t('openHere')}: ${ra.toFixed(2)}, ${dec.toFixed(2)}`;
   });
-  openFromUrl();
 }
 
 start().catch((error) => showMessage(error.message));

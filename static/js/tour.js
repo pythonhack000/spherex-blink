@@ -80,7 +80,8 @@ async function showWise(actions, sleep) {
   await actions.showWise();
   await sleep(9000);
   actions.caption(t('captionEnd'));
-  await sleep(5000);
+  await sleep(6000);
+  actions.finish();
 }
 
 /** Starts the demo, or stops it if it is already running. */

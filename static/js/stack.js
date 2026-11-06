@@ -8,6 +8,7 @@ const ASINH_SOFTENING = 12;
 const LOW_PERCENTILE = 0.25;
 const HIGH_PERCENTILE = 0.998;
 const DEG = Math.PI / 180;
+const NAN_CODE = -32768;
 
 export const DETECTOR_RANGES = {
   1: [0.75, 1.09],
@@ -197,4 +198,24 @@ export function decodeFrames(buffer, size) {
     pixels: new Float32Array(buffer, pixelStart + index * area * 4, area),
     mask: new Uint8Array(buffer, maskStart + index * area, area),
   }));
+}
+
+/** Decodes the compact static format: asinh-coded int16 pixels, then uint8 masks. */
+export function decodeStaticFrames(buffer, meta) {
+  const area = meta.grid.n * meta.grid.n;
+  const codes = new Int16Array(buffer, 0, meta.frames.length * area);
+  const maskStart = meta.frames.length * area * 2;
+  return meta.frames.map((item, index) => ({
+    ...item,
+    pixels: decodeCodes(codes.subarray(index * area, (index + 1) * area), item.soft, meta.step),
+    mask: new Uint8Array(buffer, maskStart + index * area, area),
+  }));
+}
+
+export function decodeCodes(codes, soft, step) {
+  const pixels = new Float32Array(codes.length);
+  for (let index = 0; index < codes.length; index += 1) {
+    pixels[index] = codes[index] === NAN_CODE ? NaN : soft * Math.sinh(codes[index] * step);
+  }
+  return pixels;
 }

@@ -8,16 +8,17 @@ import numpy as np
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
-from . import analysis, config, gaia, hips, resolver, wise
+from . import config, gaia, hips, resolver, wise
 from .coords import parse_position
 from .jobs import Job, JobStore
-from .presets import PRESETS
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI(title="SPHEREx Blink")
 app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=4)
+app.add_middleware(CORSMiddleware, allow_origins=["https://pythonhack000.github.io"], allow_methods=["GET"])
 store = JobStore()
 
 Ra = Query(ge=0, le=360)
@@ -38,11 +39,6 @@ def _binary(meta, chunks: list[bytes]) -> Response:
     header += b" " * (-len(header) % JSON_ALIGNMENT)
     payload = b"".join([struct.pack("<I", len(header)), header, *chunks])
     return Response(payload, media_type="application/octet-stream")
-
-
-@app.get("/api/presets")
-def presets() -> list[dict]:
-    return [preset.to_json() for preset in PRESETS]
 
 
 @app.get("/api/parse")
@@ -82,35 +78,6 @@ def job_frames(identifier: str, start: int = Query(0, ge=0)) -> Response:
     pixels = [frame.pixels.astype("<f4").tobytes() for frame in frames]
     masks = [frame.mask.astype(np.uint8).tobytes() for frame in frames]
     return _binary([frame.meta for frame in frames], [*pixels, *masks])
-
-
-@app.get("/api/job/{identifier}/spectrum")
-def job_spectrum(
-    identifier: str,
-    ra: float = Ra,
-    dec: float = Dec,
-    pmra: float = 0.0,
-    pmdec: float = 0.0,
-    epoch: float = 2016.0,
-) -> list[dict]:
-    return analysis.spectrum(_job_or_404(identifier), ra, dec, pmra, pmdec, epoch)
-
-
-@app.get("/api/job/{identifier}/motion")
-def job_motion(
-    identifier: str,
-    ra: float = Ra,
-    dec: float = Dec,
-    pmra: float = 0.0,
-    pmdec: float = 0.0,
-    epoch: float = 2016.0,
-    detectors: str = Query("1,2,3,4,5,6", pattern=r"^[1-6](,[1-6])*$"),
-) -> dict:
-    chosen = {int(item) for item in detectors.split(",")}
-    try:
-        return analysis.measure_motion(_job_or_404(identifier), ra, dec, pmra, pmdec, epoch, chosen)
-    except ValueError as error:
-        raise HTTPException(422, str(error)) from error
 
 
 @app.get("/api/job/{identifier}/wise")
