@@ -22,7 +22,13 @@ const results = TARGETS.map((target) => {
   const frames = decodeStaticFrames(buffer, meta);
   const summary = { key: target.key, thumbs: meta.thumbs, frames: frames.length, available: meta.available };
   if (!MEASURED_CATEGORIES.includes(target.category)) return summary;
-  const motion = measureMotion(frames, meta.grid, target, MOTION_ARRAYS[target.key] ?? ALL_ARRAYS);
+  let motion;
+  try {
+    motion = measureMotion(frames, meta.grid, target, MOTION_ARRAYS[target.key] ?? ALL_ARRAYS);
+  } catch (error) {
+    console.error(`${target.key}: motion not measured: ${error.message}`);
+    return summary;
+  }
   return {
     ...summary,
     dates: motion.visits.length,

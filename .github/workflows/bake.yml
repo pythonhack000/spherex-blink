@@ -24,11 +24,23 @@ jobs:
         with:
           node-version: "22"
       - run: pip install -r requirements.txt
+      - name: Restore downloaded frames
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: frames-${{ github.run_id }}
+          restore-keys: frames-
       - name: Bake
         env:
           BLINK_CACHE: data
-          BLINK_WORKERS: "6"
+          BLINK_WORKERS: "10"
         run: python -m scripts.bake
+      - name: Keep downloaded frames for the next run
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: frames-${{ github.run_id }}
       - name: Build static site data
         env:
           BLINK_CACHE: data
