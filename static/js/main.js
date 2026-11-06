@@ -30,6 +30,8 @@ const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
 const FOLLOW_ZOOM = 2;
+// A close pair of bright stars: the tracker can jump between them, so no number is shown.
+const MOTION_UNRELIABLE = new Set(['61cyg']);
 const MIN_NOTED_SPEED = 0.2;
 const NEUTRAL_TINT = '214, 224, 240';
 const GAIA_EPOCH = 2016;
@@ -964,6 +966,14 @@ async function measureMotion() {
 }
 
 function showMotion(result) {
+  if (MOTION_UNRELIABLE.has(state.target?.key) && !state.lock) {
+    const note = document.createElement('p');
+    note.textContent = t('motionUnreliable');
+    $('motion-result').replaceChildren(note);
+    $('measure').hidden = true;
+    state.track = null;
+    return;
+  }
   const unit = t('perYear');
   const floor = Math.max(result.controlMedian ?? Infinity, result.fit.totalErr);
   const real = result.fit.total > MOTION_SIGNIFICANCE * floor;
@@ -1391,7 +1401,7 @@ function resultRow(preset) {
     displayName(preset),
     `${result.frames} / ${result.available}`,
     String(result.dates),
-    result.measured > MOTION_SIGNIFICANCE * result.error
+    MOTION_UNRELIABLE.has(preset.key) ? t('motionUnreliable') : result.measured > MOTION_SIGNIFICANCE * result.error
       ? `${number(result.measured)} ± ${number(result.error)}`
       : t('notDetected'),
     result.catalog === null ? t('noneMeasured') : number(result.catalog),
