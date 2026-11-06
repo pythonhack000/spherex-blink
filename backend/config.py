@@ -7,7 +7,11 @@ CACHE_DIR = Path(os.environ.get("BLINK_CACHE", ROOT / "cache"))
 STATIC_DIR = ROOT / "static"
 
 IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
-SESAME_URL = "https://cds.unistra.fr/cgi-bin/nph-sesame/-oI/A"
+SESAME_URLS = (
+    "https://cds.unistra.fr/cgi-bin/nph-sesame/-oI/A",
+    "https://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-oI/A",
+    "http://vizier.cfa.harvard.edu/viz-bin/nph-sesame/-oI/A",
+)
 VIZIER_URL = "https://vizier.cds.unistra.fr/viz-bin/asu-tsv"
 
 # Used only if the archive's self-description cannot be read.

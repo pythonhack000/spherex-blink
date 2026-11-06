@@ -1,5 +1,5 @@
 from backend import gaia, hips, wise
-from backend.presets import PRESETS, find_preset
+from backend.presets import ALL_TARGETS, PRESETS, find_preset
 from backend.resolver import parse_sesame
 
 
@@ -41,3 +41,12 @@ def test_every_challenge_target_is_available_by_name():
 
 def test_target_lookup_ignores_case_and_spacing():
     assert find_preset("  WISE   0855 ").key == "wise0855"
+
+
+def test_every_target_has_a_unique_key_and_a_russian_or_shared_name():
+    keys = [target.key for target in ALL_TARGETS]
+    assert len(keys) == len(set(keys))
+
+
+def test_places_are_found_by_russian_alias():
+    assert find_preset("андромеда").key == "m31"

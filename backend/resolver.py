@@ -30,14 +30,19 @@ def parse_sesame(text: str) -> dict | None:
 
 
 def resolve(query: str) -> dict | None:
+    """Ask each name service in turn; only fail if none of them can be reached."""
     preset = find_preset(query)
     if preset:
         return preset.to_json()
-    response = httpx.get(
-        f"{config.SESAME_URL}?{quote(query)}",
-        timeout=LOOKUP_TIMEOUT_SECONDS,
-        follow_redirects=True,
-    )
-    response.raise_for_status()
-    found = parse_sesame(response.text)
-    return {**found, "name": query} if found else None
+    last_error: httpx.HTTPError | None = None
+    for base in config.SESAME_URLS:
+        try:
+            response = httpx.get(f"{base}?{quote(query)}", timeout=LOOKUP_TIMEOUT_SECONDS, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            log.warning("Name service %s failed: %s", base, error)
+            last_error = error
+            continue
+        found = parse_sesame(response.text)
+        return {**found, "name": query} if found else None
+    raise last_error

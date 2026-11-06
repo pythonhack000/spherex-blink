@@ -10,6 +10,7 @@ const DATA = process.argv[2] ?? 'static/data';
 const TARGETS = JSON.parse(readFileSync(join(DATA, 'targets.json'), 'utf8'));
 const MOTION_ARRAYS = { wise0855: [5, 6] };
 const ALL_ARRAYS = [1, 2, 3, 4, 5, 6];
+const MEASURED_CATEGORIES = ['challenge', 'stars'];
 // The long-wavelength array with the best date coverage for each variable star.
 const WING_ARRAYS = { rwaur: 5, rdra: 4 };
 
@@ -19,12 +20,11 @@ const results = TARGETS.map((target) => {
   const raw = gunzipSync(readFileSync(join(folder, 'frames.bin.gz')));
   const buffer = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
   const frames = decodeStaticFrames(buffer, meta);
+  const summary = { key: target.key, thumbs: meta.thumbs, frames: frames.length, available: meta.available };
+  if (!MEASURED_CATEGORIES.includes(target.category)) return summary;
   const motion = measureMotion(frames, meta.grid, target, MOTION_ARRAYS[target.key] ?? ALL_ARRAYS);
   return {
-    key: target.key,
-    thumbs: meta.thumbs,
-    frames: frames.length,
-    available: meta.available,
+    ...summary,
     dates: motion.visits.length,
     measured: motion.fit.total,
     error: motion.fit.totalErr,
