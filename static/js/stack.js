@@ -98,7 +98,8 @@ export function sharpenForDisplay(image, size, amount = SHARPEN_AMOUNT) {
           }
         }
       }
-      result[y * size + x] = centre + amount * (centre - sum / count);
+      // Only peaks are lifted: subtracting here would draw dark rings around bright stars.
+      result[y * size + x] = centre + amount * Math.max(0, centre - sum / count);
     }
   }
   return result;
