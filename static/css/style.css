@@ -273,7 +273,7 @@ body[data-view="diving"] .hero > * { pointer-events: none; }
 .chart .line { fill: none; stroke-width: 2.6; filter: drop-shadow(0 0 5px rgba(150, 190, 255, 0.9)); }
 .chart .area { stroke: none; opacity: 0.28; }
 
-.tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin-top: auto; }
+.tools { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-left: auto; justify-content: flex-end; }
 .tool { display: flex; gap: 8px; align-items: center; font-size: 14px; }
 .tool input { accent-color: var(--accent); width: 16px; height: 16px; }
 .tool select { padding: 4px 10px; }

@@ -5,6 +5,7 @@ Usage: python -m scripts.bake [preset-key ...]
 import sys
 import time
 
+from backend import wise
 from backend.jobs import Job
 from backend.presets import PRESETS
 
@@ -15,6 +16,7 @@ def bake(preset) -> None:
     job = Job(ra, dec, preset.fov)
     started = time.time()
     job.run()
+    wise.frame(job.grid)
     print(
         f"{preset.key}: {len(job.frames)}/{job.total} frames of {job.available} available, "
         f"{job.failed} failed, {time.time() - started:.0f}s, status={job.status} {job.error or ''}",

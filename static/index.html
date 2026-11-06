@@ -62,30 +62,30 @@
         <p id="chart-note" class="note"></p>
       </section>
 
-      <div class="tools">
-        <div class="segment" role="group" id="modes">
-          <button type="button" data-mode="video" data-t="modeVideo"></button>
-          <button type="button" data-mode="sum" data-t="modeSum"></button>
-          <button type="button" data-mode="diff" data-t="modeDiff"></button>
-        </div>
-        <label class="tool"><span data-t="fieldOfView"></span>
-          <select id="fov">
-            <option value="0.05">3′</option>
-            <option value="0.1">6′</option>
-            <option value="0.2">12′</option>
-            <option value="0.5">30′</option>
-          </select>
-        </label>
-        <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
-        <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
-        <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
-      </div>
     </aside>
 
     <footer class="deck">
       <div class="timeline">
         <button id="play" type="button" class="glow"></button>
         <div id="dates" class="dates" role="group"></div>
+        <div class="tools">
+          <div class="segment" role="group" id="modes">
+            <button type="button" data-mode="video" data-t="modeVideo"></button>
+            <button type="button" data-mode="sum" data-t="modeSum"></button>
+            <button type="button" data-mode="diff" data-t="modeDiff"></button>
+          </div>
+          <label class="tool"><span data-t="fieldOfView"></span>
+            <select id="fov">
+              <option value="0.05">3′</option>
+              <option value="0.1">6′</option>
+              <option value="0.2">12′</option>
+              <option value="0.5">30′</option>
+            </select>
+          </label>
+          <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
+          <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
+          <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
+        </div>
       </div>
       <div class="bands">
         <button id="composite" type="button" data-t="composite"></button>
