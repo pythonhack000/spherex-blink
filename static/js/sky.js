@@ -4,6 +4,7 @@ const TILES_FROM_CDS = 'https://alasky.cds.unistra.fr/AllWISE/RGB-W4-W2-W1';
 const PROBE_TIMEOUT_MS = 2500;
 const WHOLE_SKY_FOV = 240;
 const DIVE_SECONDS = 3;
+const GALACTIC_CENTRE = { ra: 266.405, dec: -28.936 };
 
 /** CDS has every zoom level, but some networks cannot reach it; the site carries a coarse copy. */
 async function chooseTiles() {
@@ -65,7 +66,11 @@ export async function createSky(containerId, onSelect) {
       map.zoomToFoV?.(fov, DIVE_SECONDS);
       await new Promise((resolve) => setTimeout(resolve, DIVE_SECONDS * 1000));
     },
-    refresh: () => window.dispatchEvent(new Event('resize')),
+    refresh() {
+      map.gotoRaDec(GALACTIC_CENTRE.ra, GALACTIC_CENTRE.dec);
+      map.setFoV(WHOLE_SKY_FOV);
+      window.dispatchEvent(new Event('resize'));
+    },
     selected: () => chosen,
   };
 }
