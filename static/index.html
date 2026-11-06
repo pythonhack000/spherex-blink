@@ -7,7 +7,7 @@
   <meta name="description" content="Compare NASA SPHEREx images of any patch of sky across dates and see what moved.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600&family=Unbounded:wght@400;600;800&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=places">
+  <link rel="stylesheet" href="css/style.css?v=search">
 </head>
 <body data-view="sky">
   <div id="sky" class="sky"></div>
@@ -17,9 +17,10 @@
   <header class="top">
     <button id="back-to-sky" type="button" class="logo">SPHEREx<span>Blink</span></button>
     <form id="search" class="search">
-      <input id="search-input" type="text" list="name-list" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
+      <input id="search-input" type="text" autocomplete="off" spellcheck="false" data-t-label="searchLabel" data-t-placeholder="searchPlaceholder">
       <button type="submit" data-t="open"></button>
-      <datalist id="name-list"></datalist>
+      <button id="top-places" type="button" class="glow" data-t="topPlaces"></button>
+      <div id="search-list" class="search-list" hidden></div>
     </form>
     <button id="tour" type="button" class="ghost" data-t="tour"></button>
     <button id="language" type="button" class="ghost" aria-label="Language">RU</button>
@@ -43,7 +44,7 @@
         <figcaption data-t="proofCaption"></figcaption>
       </figure>
     </div>
-    <div id="categories" class="segment categories" role="group"></div>
+    <h2 class="presets-title" data-t="presetsTitle"></h2>
     <nav id="presets" class="presets" aria-label="Targets"></nav>
   </section>
 
@@ -119,6 +120,17 @@
             <option value="0.5">30′</option>
           </select>
         </label>
+        <label class="tool"><span data-t="toolSpeed"></span>
+          <select id="speed">
+            <option value="1500" data-t="speedSlow"></option>
+            <option value="900" selected data-t="speedNormal"></option>
+            <option value="350" data-t="speedFast"></option>
+          </select>
+        </label>
+        <label class="tool wide"><span data-t="toolContrast"></span>
+          <input id="contrast" type="range" min="0.4" max="4" step="0.1" value="1">
+        </label>
+        <label class="tool"><input id="negative" type="checkbox"><span data-t="toolNegative"></span></label>
         <label class="tool"><input id="gaia" type="checkbox"><span data-t="gaia"></span></label>
         <label class="tool"><input id="wise" type="checkbox"><span data-t="wise"></span></label>
         <label class="tool"><input id="flags" type="checkbox"><span data-t="excludeFlags"></span></label>
@@ -133,7 +145,8 @@
         <div class="try">
           <button id="follow" type="button" class="try-main" aria-pressed="false"></button>
           <button id="try-compare" type="button" data-t="tryCompare"></button>
-          <button id="try-bands" type="button" data-t="tryBands"></button>
+          <button id="fullscreen" type="button" data-t="toolFullscreen"></button>
+          <button id="save-image" type="button" data-t="toolSave"></button>
         </div>
       </div>
       <div id="chooser" class="chooser" hidden>
@@ -165,6 +178,6 @@
     </footer>
   </main>
 
-  <script type="module" src="js/main.js?v=places"></script>
+  <script type="module" src="js/main.js?v=search"></script>
 </body>
 </html>

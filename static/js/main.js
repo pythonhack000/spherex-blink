@@ -6,17 +6,16 @@ import { applyTranslations, currentLanguage, setLanguage, t } from './i18n.js';
 import {
   drawPlate, limitsFor, paintComposite, paintDifference, paintMono, stacksFor, StackCache, tintFor,
 } from './plate.js';
-import { findByName, suggestions } from './names.js';
+import { findByName, searchMatches } from './names.js';
 import { createSky } from './sky.js';
 import { canvasToPlate, fullView, panBy, zoomAt } from './viewport.js';
 import {
-  channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, positionAt, resolveBand, selectBand, skyToPixel,
+  channelWavelength, CHANNELS, DETECTOR_RANGES, detectorOfChannel, mjdToDate, mjdToYear, pixelToSky, positionAt, resolveBand, selectBand, skyToPixel, wellCovered,
   visitsOf,
 } from './stack.js';
 import { runTour } from './tour.js';
 
 const POLL_MS = 1500;
-const FRAME_MS = 900;
 const DEFAULT_FOV = 0.1;
 const CUSTOM_EPOCH = 2016;
 const DEFAULT_MID_MJD = 61100;
@@ -30,7 +29,7 @@ const COUNT_UP_MS = 900;
 const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
-const FOLLOW_ZOOM = 1.5;
+const FOLLOW_ZOOM = 2;
 const MIN_NOTED_SPEED = 0.2;
 const NEUTRAL_TINT = '214, 224, 240';
 const GAIA_EPOCH = 2016;
@@ -76,7 +75,9 @@ const state = {
   playing: false,
   view: 'one',
   range: { from: null, to: null, endpoints: true },
-  category: 'challenge',
+  received: 0,
+  speedMs: 900,
+  contrast: 1,
   follow: false,
   lock: null,
   picking: false,
@@ -123,7 +124,10 @@ function viewFor(step) {
   const measured = state.track?.find((point) => Math.abs(point.year - year) < TRACK_MATCH_YEARS);
   const { ra, dec } = positionAt({ ...motionOf(object), ...object }, year);
   const { x, y } = measured ?? skyToPixel(ra, dec, state.job);
-  return { zoom: FOLLOW_ZOOM, x: x + 0.5, y: y + 0.5 };
+  const size = state.job.n;
+  const half = size / FOLLOW_ZOOM / 2;
+  const fit = (value) => Math.min(size - half, Math.max(half, value + 0.5));
+  return { zoom: FOLLOW_ZOOM, x: fit(x), y: fit(y) };
 }
 
 function overlayFor(step, extra = {}) {
@@ -223,7 +227,7 @@ function paintAmbient() {
 
 /** Painting is the slow part, so finished pictures are kept and only copied afterwards. */
 function paintStep(step, size, wanted) {
-  const key = `painted|${step?.key ?? ALL_DATES}|${wanted.kind}${wanted.detector ?? wanted.channel ?? ''}|${state.mode}|${state.excludeFlags}`;
+  const key = `painted|${step?.key ?? ALL_DATES}|${wanted.kind}${wanted.detector ?? wanted.channel ?? ''}|${state.mode}|${state.excludeFlags}|${state.contrast}`;
   const stored = cache.entries.get(key);
   if (stored !== undefined) {
     if (stored) copyCanvas(stored, buffer);
@@ -258,13 +262,19 @@ function paintFresh(step, size, wanted) {
 /** One stretch for every date, so brightness changes between frames are real. */
 function sharedLimits(size, band) {
   const bandKey = `${band.kind}${band.detector ?? band.channel ?? ''}`;
-  return cache.get(`limits|${bandKey}|${state.excludeFlags}`, () =>
+  const limits = cache.get(`limits|${bandKey}|${state.excludeFlags}`, () =>
     limitsFor(stacksFor(state.frames, band, size, state.excludeFlags, cache, ALL_DATES)));
+  return withContrast(limits);
+}
+
+function withContrast(limits) {
+  if (limits.low !== undefined) return { low: limits.low, high: limits.low + (limits.high - limits.low) / state.contrast };
+  return { red: withContrast(limits.red), green: withContrast(limits.green), blue: withContrast(limits.blue) };
 }
 
 function paintWise(step, size) {
   const image = step.frames[0].pixels;
-  paintMono(buffer, size, image, limitsFor({ image }), tintFor({ kind: 'detector', detector: 6 }));
+  paintMono(buffer, size, image, withContrast(limitsFor({ image })), tintFor());
   return true;
 }
 
@@ -523,25 +533,6 @@ async function compareWithPast() {
   setView('compare');
 }
 
-function sweepBands() {
-  setView('one');
-  setMode('sum');
-  const started = performance.now();
-  const session = state.session;
-  const step = () => {
-    const progress = (performance.now() - started) / SWEEP_MS;
-    if (session !== state.session || state.mode !== 'sum') return;
-    if (progress >= 1) {
-      setBand({ kind: 'composite' });
-      setMode('video');
-      return;
-    }
-    setBand({ kind: 'channel', channel: Math.floor(progress * CHANNELS) });
-    requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
-}
-
 function setView(view) {
   state.view = view;
   setPressed($('views'), 'view', view);
@@ -565,7 +556,7 @@ function setPlaying(playing) {
   state.playing = playing;
   $('play').textContent = t(playing ? 'pause' : 'play');
   clearInterval(playTimer);
-  if (playing) playTimer = setInterval(advance, FRAME_MS);
+  if (playing) playTimer = setInterval(advance, state.speedMs);
 }
 
 /** Positions in the date strip that the video plays, from the chosen date to the chosen date. */
@@ -677,7 +668,7 @@ async function openTarget(target, fov = target.fov ?? DEFAULT_FOV) {
     session, target, job: null, staticMeta: null, frames: [], visits: [], wiseFrame: null, position: 0, gaia: [],
     spectrum: null, spectrumObject: null, track: null, pick: null, band: { kind: 'composite' }, mode: 'video',
     auto: { spectrum: false, final: false }, view: 'one', follow: false, lock: null, picking: false, candidates: null,
-    range: { from: null, to: null, endpoints: true },
+    range: { from: null, to: null, endpoints: true }, received: 0,
   });
   refreshFollowUi();
   cache.clear();
@@ -707,8 +698,10 @@ function showLoadProblem(target, fov) {
 
 /** The challenge targets ship with the site, so they open at once with no server. */
 async function openStatic(target, session) {
-  const { meta, frames } = await api.getStaticTarget(target.key);
+  const loaded = await api.getStaticTarget(target.key);
   if (session !== state.session) return;
+  const { meta } = loaded;
+  const frames = wellCovered(loaded.frames);
   state.staticMeta = meta;
   state.job = { ...meta.grid, status: 'done', available: meta.available, total: meta.total, done: frames.length, failed: 0 };
   state.plateView = fullView(meta.grid.n);
@@ -779,10 +772,11 @@ async function followJob(session) {
 }
 
 async function pullFrames(session) {
-  if (state.job.done <= state.frames.length) return;
-  const incoming = await api.getFrames(state.job.id, state.frames.length, state.job.n);
+  if (state.job.done <= state.received) return;
+  const incoming = await api.getFrames(state.job.id, state.received, state.job.n);
   if (session !== state.session || !incoming.length) return;
-  state.frames = [...state.frames, ...incoming];
+  state.received += incoming.length;
+  state.frames = [...state.frames, ...wellCovered(incoming)];
   state.visits = visitsOf(state.frames);
   cache.clear();
   renderDates();
@@ -1154,8 +1148,11 @@ const demoActions = {
 // ---------- Start ----------
 
 function bindControls() {
+  bindSearchList();
+  bindViewingTools();
   $('search').addEventListener('submit', (event) => {
     event.preventDefault();
+    closeSearchList();
     showMessage(null);
     search($('search-input').value).catch((error) => showMessage(error.message));
   });
@@ -1175,7 +1172,6 @@ function bindControls() {
   $('follow').addEventListener('click', openChooser);
   $('chooser-close').addEventListener('click', unlockCamera);
   $('try-compare').addEventListener('click', compareWithPast);
-  $('try-bands').addEventListener('click', sweepBands);
   $('range-from').addEventListener('change', () => setRange({ from: $('range-from').value }));
   $('range-to').addEventListener('change', () => setRange({ to: $('range-to').value }));
   $('endpoints').addEventListener('click', () => setRange({ endpoints: !state.range.endpoints }));
@@ -1273,28 +1269,104 @@ function presetCard(preset) {
   return button;
 }
 
-const CATEGORIES = ['challenge', 'stars', 'galaxies', 'nebulae', 'clusters'];
-
 function buildPresets() {
-  const tabs = CATEGORIES.map((category) => {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.textContent = t(`category_${category}`);
-    tab.setAttribute('aria-pressed', String(state.category === category));
-    tab.addEventListener('click', () => {
-      state.category = category;
-      buildPresets();
-    });
-    return tab;
+  $('presets').replaceChildren(...state.presets.filter((preset) => preset.category === 'challenge').map(presetCard));
+}
+
+// ---------- Search list ----------
+
+const SEARCH_GROUPS = ['stars', 'galaxies', 'nebulae', 'clusters', 'challenge'];
+
+function searchRow(entry) {
+  const row = document.createElement('button');
+  row.type = 'button';
+  row.className = 'search-row';
+  const thumb = resultOf(entry.key)?.thumbs?.frames?.[1];
+  if (thumb) {
+    const image = document.createElement('img');
+    image.src = `data/${entry.key}/${thumb.file}`;
+    image.alt = '';
+    image.loading = 'lazy';
+    row.append(image);
+  }
+  const words = document.createElement('span');
+  const name = document.createElement('strong');
+  name.textContent = displayName(entry);
+  const hook = document.createElement('small');
+  hook.textContent = entry.key ? t(`hook_${entry.key}`) : t('loadsLive');
+  words.append(name, hook);
+  row.append(words);
+  row.addEventListener('click', () => {
+    closeSearchList();
+    $('search-input').value = '';
+    openNamed(entry);
   });
-  $('categories').replaceChildren(...tabs);
-  const shown = state.presets.filter((preset) => preset.category === state.category);
-  $('presets').replaceChildren(...shown.map(presetCard));
-  $('name-list').replaceChildren(...suggestions(state.presets, currentLanguage()).map((name) => {
-    const option = document.createElement('option');
-    option.value = name;
-    return option;
-  }));
+  return row;
+}
+
+function renderSearchList() {
+  const matches = searchMatches($('search-input').value, state.presets);
+  const groups = [...SEARCH_GROUPS, 'more'].flatMap((group) => {
+    const members = matches.filter((entry) => (entry.category ?? 'more') === group);
+    if (!members.length) return [];
+    const title = document.createElement('h3');
+    title.textContent = t(`category_${group}`);
+    return [title, ...members.map(searchRow)];
+  });
+  const empty = document.createElement('p');
+  empty.textContent = t('searchHint');
+  $('search-list').replaceChildren(...(groups.length ? groups : [empty]));
+  $('search-list').hidden = false;
+}
+
+function closeSearchList() {
+  $('search-list').hidden = true;
+}
+
+function bindSearchList() {
+  const input = $('search-input');
+  input.addEventListener('focus', renderSearchList);
+  input.addEventListener('input', renderSearchList);
+  $('top-places').addEventListener('click', () => {
+    input.value = '';
+    input.focus();
+    renderSearchList();
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.search')) closeSearchList();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeSearchList();
+  });
+}
+
+// ---------- More ways to view ----------
+
+function bindViewingTools() {
+  $('speed').addEventListener('change', () => {
+    state.speedMs = Number($('speed').value);
+    if (state.playing) setPlaying(true);
+  });
+  $('contrast').addEventListener('input', () => {
+    state.contrast = Number($('contrast').value);
+    render();
+  });
+  $('negative').addEventListener('change', () => {
+    document.body.classList.toggle('negative', $('negative').checked);
+  });
+  $('fullscreen').addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.querySelector('.plates').requestFullscreen?.();
+  });
+  $('save-image').addEventListener('click', savePlate);
+}
+
+function savePlate() {
+  const link = document.createElement('a');
+  const label = $('plate-date').textContent.replace(/[^\p{L}\p{N}]+/gu, '-');
+  link.download = `spherex-${state.target?.key ?? 'sky'}-${label}.png`;
+  link.href = $('plate').toDataURL('image/png');
+  link.click();
 }
 
 function buildProof() {

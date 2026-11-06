@@ -9,6 +9,8 @@ const LOW_PERCENTILE = 0.6;
 const HIGH_PERCENTILE = 0.998;
 const DEG = Math.PI / 180;
 const NAN_CODE = -32768;
+const MIN_COVERED_SHARE = 0.92;
+const COVERAGE_STRIDE = 7;
 const SHARPEN_RADIUS = 2;
 const SHARPEN_AMOUNT = 1.1;
 
@@ -128,6 +130,17 @@ export function differenceLimit(image) {
   const magnitudes = image.filter((value) => !Number.isNaN(value)).map(Math.abs).sort();
   if (!magnitudes.length) return 1;
   return magnitudes[Math.floor((magnitudes.length - 1) * 0.995)] || 1;
+}
+
+/** Exposures that clip the edge of a detector would leave holes in the plate. */
+export function wellCovered(frames, minimumShare = MIN_COVERED_SHARE) {
+  return frames.filter((frame) => {
+    let finite = 0;
+    for (let index = 0; index < frame.pixels.length; index += COVERAGE_STRIDE) {
+      if (!Number.isNaN(frame.pixels[index])) finite += 1;
+    }
+    return finite >= minimumShare * Math.ceil(frame.pixels.length / COVERAGE_STRIDE);
+  });
 }
 
 /** Group frames into dated visits, ordered in time. */
