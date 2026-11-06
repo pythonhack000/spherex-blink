@@ -29,7 +29,7 @@ const COUNT_UP_MS = 900;
 const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
-const FOLLOW_ZOOM = 3;
+const FOLLOW_ZOOM = 1.5;
 const SWEEP_MS = 9000;
 const TRACK_MATCH_YEARS = 0.02;
 const MEASURE_DELAY_MS = 350;
@@ -105,10 +105,7 @@ function viewFor(step) {
   const measured = state.track?.find((point) => Math.abs(point.year - year) < TRACK_MATCH_YEARS);
   const { ra, dec } = positionAt({ ...motionOf(object), ...object }, year);
   const { x, y } = measured ?? skyToPixel(ra, dec, state.job);
-  const size = state.job.n;
-  const half = size / FOLLOW_ZOOM / 2;
-  const clamp = (value) => Math.min(size - half, Math.max(half, value));
-  return { zoom: FOLLOW_ZOOM, x: clamp(x + 0.5), y: clamp(y + 0.5) };
+  return { zoom: FOLLOW_ZOOM, x: x + 0.5, y: y + 0.5 };
 }
 
 function overlayFor(step, extra = {}) {
@@ -365,9 +362,15 @@ function pickFilm(position) {
   render();
 }
 
-function setFollow(follow) {
+/** A year of SPHEREx moves a star only a little, so following also brings in 2010. */
+async function setFollow(follow) {
   state.follow = follow;
   $('follow').setAttribute('aria-pressed', String(follow));
+  if (follow && state.staticMeta && !$('wise').checked && (state.target.pmra || state.target.pmdec)) {
+    $('wise').checked = true;
+    await toggleWise();
+  }
+  if (follow && state.view === 'compare') setView('one');
   if (follow && state.position === ALL_DATES) state.position = 0;
   if (follow && state.mode !== 'video') setMode('video');
   if (follow && state.view === 'one') setPlaying(true);
