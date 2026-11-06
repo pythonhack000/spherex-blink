@@ -354,6 +354,7 @@ body[data-layout="compare"] .plate-frame { flex: 1 1 0; height: auto; min-width:
   color: var(--accent);
   text-shadow: 0 0 30px rgba(var(--band), 0.8);
 }
+.big-words { font: 600 18px/1.2 var(--display); color: var(--accent); }
 .big-number small { font-size: 0.36em; font-weight: 600; margin-left: 4px; }
 .motion-result table { width: 100%; margin-top: 8px; border-collapse: collapse; }
 .motion-result td { padding: 2px 0; }

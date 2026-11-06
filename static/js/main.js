@@ -30,6 +30,9 @@ const DRAG_THRESHOLD_PX = 4;
 const FILM_TILE_DELAY_MS = 30;
 const FILM_FIRST_DELAY_MS = 120;
 const FOLLOW_ZOOM = 1.5;
+const FAST_MOVER_MAS = 1000;
+// The long-wavelength array with the best date coverage for each variable star.
+const CURVE_ARRAYS = { rwaur: 5, rdra: 4 };
 const SWEEP_MS = 9000;
 const TRACK_MATCH_YEARS = 0.02;
 const MEASURE_DELAY_MS = 350;
@@ -71,6 +74,7 @@ const state = {
 };
 
 let playTimer = null;
+let filmGeneration = 0;
 let sky = null;
 
 // ---------- Sequence of dates ----------
@@ -290,7 +294,7 @@ function explainNow() {
   if (state.follow) return t('explainFollow');
   if (state.mode === 'sum') return t('explainSum');
   if (state.band.kind !== 'composite') return t('explainBand');
-  return t(state.target.pmra || state.target.pmdec ? 'explainMover' : 'explainVideo');
+  return t(Math.hypot(state.target.pmra ?? 0, state.target.pmdec ?? 0) > FAST_MOVER_MAS ? 'explainMover' : 'explainVideo');
 }
 
 // ---------- Controls ----------
@@ -309,32 +313,34 @@ function filmTile(step, position) {
   const canvas = document.createElement('canvas');
   canvas.width = FILM_CANVAS_SIZE;
   canvas.height = FILM_CANVAS_SIZE;
-  const size = state.job.n;
-  if (paintStep(step, size, { kind: 'composite' })) drawPlate(canvas, buffer, { grid: state.job, bare: true });
   const label = document.createElement('span');
   label.textContent = stepLabel(step);
   button.append(canvas, label);
   button.addEventListener('click', () => pickFilm(position));
-  return button;
+  return { button, canvas, step };
 }
 
+function paintFilmTile({ canvas, step }) {
+  const saved = document.createElement('canvas');
+  copyCanvas(buffer, saved);
+  if (paintStep(step, state.job.n, { kind: 'composite' })) drawPlate(canvas, buffer, { grid: state.job, bare: true });
+  copyCanvas(saved, buffer);
+}
+
+/** The strip is laid out at once in date order; its pictures fill in one per tick. */
 function renderDates() {
+  filmGeneration += 1;
+  const generation = filmGeneration;
   if (!state.job) {
     $('dates').replaceChildren();
     return;
   }
-  const session = state.session;
-  const steps = [...sequence().map((step, index) => [step, index]), [null, ALL_DATES]];
-  $('dates').replaceChildren();
-  // One tile per tick, so the main plate appears first and the page never freezes.
-  steps.forEach(([step, position], order) => {
+  const tiles = [...sequence().map((step, index) => filmTile(step, index)), filmTile(null, ALL_DATES)];
+  $('dates').replaceChildren(...tiles.map((tile) => tile.button));
+  markFilm();
+  tiles.forEach((tile, order) => {
     setTimeout(() => {
-      if (session !== state.session) return;
-      const saved = document.createElement('canvas');
-      copyCanvas(buffer, saved);
-      $('dates').append(filmTile(step, position));
-      copyCanvas(saved, buffer);
-      markFilm();
+      if (generation === filmGeneration && state.job) paintFilmTile(tile);
     }, order * FILM_TILE_DELAY_MS + FILM_FIRST_DELAY_MS);
   });
 }
@@ -678,7 +684,10 @@ function drawChart() {
 }
 
 function bandPoints(points) {
-  if (state.band.kind === 'composite') return points;
+  if (state.band.kind === 'composite') {
+    const array = CURVE_ARRAYS[state.target?.key];
+    return array ? points.filter((point) => point.detector === array) : points;
+  }
   const detector = state.band.kind === 'channel' ? detectorOfChannel(state.band.channel) : state.band.detector;
   return points.filter((point) => point.detector === detector);
 }
@@ -764,9 +773,12 @@ async function measureMotion() {
 
 function showMotion(result) {
   const unit = t('perYear');
+  const floor = Math.max(result.controlMedian ?? Infinity, result.fit.totalErr);
+  const real = result.fit.total > MOTION_SIGNIFICANCE * floor;
   const big = document.createElement('div');
-  big.className = 'big-number';
-  countUp(big, result.fit.total, unit);
+  big.className = real ? 'big-number' : 'big-words';
+  if (real) countUp(big, result.fit.total, unit);
+  else big.textContent = t('notDetected');
   const rows = [
     [t('measured'), `${result.fit.total.toFixed(2)} ± ${result.fit.totalErr.toFixed(2)}${unit}`],
     ...(result.catalog ? [[t('catalogue'), `${result.catalog.toFixed(2)}${unit}`]] : []),
@@ -778,8 +790,6 @@ function showMotion(result) {
     row.insertCell().textContent = label;
     row.insertCell().textContent = value;
   }
-  const floor = Math.max(result.controlMedian ?? Infinity, result.fit.totalErr);
-  const real = result.fit.total > MOTION_SIGNIFICANCE * floor;
   const summary = document.createElement('p');
   summary.textContent = `${t(real ? 'motionVerdict' : 'motionWeak')} ${t('motionBaseline', {
     count: result.visits.length, detectors: result.detectors.join(', '),
