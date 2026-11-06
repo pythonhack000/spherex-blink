@@ -114,17 +114,17 @@ body[data-view="plate"] .ambient { opacity: 0.75; }
 .caption {
   position: fixed;
   left: 50%;
-  bottom: 30px;
+  top: 8px;
   transform: translateX(-50%);
   z-index: 8;
-  width: min(860px, calc(100vw - 32px));
-  padding: 16px 24px;
+  width: min(1040px, calc(100vw - 32px));
+  padding: 10px 22px;
   background: rgba(5, 7, 20, 0.86);
   border: 1px solid rgba(var(--band), 0.6);
   border-radius: 18px;
   box-shadow: 0 0 40px rgba(var(--band), 0.35);
-  font-size: 19px;
-  line-height: 1.4;
+  font-size: 17px;
+  line-height: 1.3;
   backdrop-filter: blur(16px);
 }
 
@@ -384,14 +384,20 @@ body[data-layout="compare"] .plate-frame { flex: 1 1 0; height: auto; min-width:
 .segment button[aria-pressed="true"] { position: relative; z-index: 1; }
 
 .deck { grid-column: 1 / -1; display: grid; gap: 8px; }
+.guide { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
+.explain { flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; }
+.try { flex: none; display: flex; gap: 8px; }
+.try button { padding: 8px 15px; font-size: 14px; font-weight: 600; }
+.try button.try-main { border-color: var(--accent); }
+.hero-help { color: var(--accent); font-weight: 600; text-shadow: 0 1px 10px #000; }
 .timeline, .bands { display: flex; gap: 14px; align-items: center; }
 .timeline #play { min-width: 92px; }
 .film { flex: 1; min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
 .film-tile {
   flex: none;
   position: relative;
-  width: 74px;
-  height: 74px;
+  width: 62px;
+  height: 62px;
   padding: 0;
   border-radius: 9px;
   overflow: hidden;
@@ -481,6 +487,8 @@ body.embed .observatory { height: 100vh; }
   .side { overflow: visible; }
   .timeline { align-items: flex-start; }
   .bands { flex-wrap: wrap; }
+  .guide { flex-direction: column; align-items: stretch; }
+  .try { flex-wrap: wrap; }
   .band-track { flex: 1 1 100%; order: 3; }
   .bands output { flex: 1; }
 }

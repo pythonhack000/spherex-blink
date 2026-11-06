@@ -31,6 +31,7 @@
       <div class="hero-words">
         <h1 data-t="heroTitle"></h1>
         <p class="hero-sub" data-t="heroSub"></p>
+        <p class="hero-help" data-t="heroHelp"></p>
         <div class="hero-actions">
           <button id="hero-tour" type="button" class="glow big" data-t="heroTour"></button>
           <button id="open-here" type="button" class="ghost big" hidden data-t="openHere"></button>
@@ -124,6 +125,14 @@
     </aside>
 
     <footer class="deck">
+      <div class="guide">
+        <p id="explain" class="explain" aria-live="polite"></p>
+        <div class="try">
+          <button id="follow" type="button" class="try-main" data-t="tryFollow" aria-pressed="false"></button>
+          <button id="try-compare" type="button" data-t="tryCompare"></button>
+          <button id="try-bands" type="button" data-t="tryBands"></button>
+        </div>
+      </div>
       <div class="timeline">
         <button id="play" type="button" class="glow"></button>
         <div id="dates" class="film" role="group"></div>

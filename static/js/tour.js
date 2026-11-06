@@ -45,7 +45,11 @@ async function showBarnard(actions, sleep) {
   await sleep(500);
   await waitForFrames(actions, sleep);
   actions.setPlaying(true);
-  await sleep(9000);
+  await sleep(6000);
+  actions.caption(t('captionFollow'));
+  actions.setFollow(true);
+  await sleep(7000);
+  actions.setFollow(false);
 }
 
 async function sweepBands(actions, sleep) {
