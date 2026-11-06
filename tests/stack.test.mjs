@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   asinhScale, binSpectrum, channelWavelength, decodeFrames, detectorOfChannel, pixelToSky,
-  positionAt, resolveBand, selectBand, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
+  positionAt, resolveBand, selectBand, sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, visitsOf,
 } from '../static/js/stack.js';
 
 const near = (actual, expected, tolerance = 1e-6) =>
@@ -110,4 +110,15 @@ test('a band with no exposure falls back to the closest band that has one', () =
   assert.equal(resolveBand(frames, { kind: 'channel', channel: 40 }).channel, 40);
   assert.deepEqual(resolveBand(frames, { kind: 'composite' }), { kind: 'composite' });
   assert.deepEqual(resolveBand([], { kind: 'channel', channel: 13 }), { kind: 'channel', channel: 13 });
+});
+
+test('display sharpening steepens a peak without touching the input or inventing NaN', () => {
+  const image = new Float32Array(81);
+  image[40] = 10;
+  image[0] = NaN;
+  const sharp = sharpenForDisplay(image, 9);
+  assert.ok(sharp[40] > 10);
+  assert.equal(image[40], 10);
+  assert.ok(Number.isNaN(sharp[0]));
+  assert.equal(sharp[80], 0);
 });

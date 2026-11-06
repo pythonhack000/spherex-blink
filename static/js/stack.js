@@ -9,6 +9,8 @@ const LOW_PERCENTILE = 0.25;
 const HIGH_PERCENTILE = 0.998;
 const DEG = Math.PI / 180;
 const NAN_CODE = -32768;
+const SHARPEN_RADIUS = 2;
+const SHARPEN_AMOUNT = 1.1;
 
 export const DETECTOR_RANGES = {
   1: [0.75, 1.09],
@@ -71,6 +73,33 @@ export function stackFrames(frames, size, excludeFlagged = false) {
       count += 1;
     }
     if (count) result[pixel] = median(scratch, count);
+  }
+  return result;
+}
+
+/**
+ * Unsharp mask for display. It steepens star edges so the eye resolves them better;
+ * every measurement keeps using the unmodified pixels.
+ */
+export function sharpenForDisplay(image, size, amount = SHARPEN_AMOUNT) {
+  const result = new Float32Array(image);
+  for (let y = SHARPEN_RADIUS; y < size - SHARPEN_RADIUS; y += 1) {
+    for (let x = SHARPEN_RADIUS; x < size - SHARPEN_RADIUS; x += 1) {
+      const centre = image[y * size + x];
+      if (Number.isNaN(centre)) continue;
+      let sum = 0;
+      let count = 0;
+      for (let dy = -SHARPEN_RADIUS; dy <= SHARPEN_RADIUS; dy += 1) {
+        for (let dx = -SHARPEN_RADIUS; dx <= SHARPEN_RADIUS; dx += 1) {
+          const value = image[(y + dy) * size + x + dx];
+          if (!Number.isNaN(value)) {
+            sum += value;
+            count += 1;
+          }
+        }
+      }
+      result[y * size + x] = centre + amount * (centre - sum / count);
+    }
   }
   return result;
 }

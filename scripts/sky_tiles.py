@@ -10,7 +10,7 @@ from pathlib import Path
 import httpx
 
 BASE_URL = "https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/RGB-W4-W2-W1/"
-MAX_ORDER = 2
+MAX_ORDER = 3
 BASE_PIXELS = 12
 WORKERS = 6
 OUTPUT = Path(sys.argv[1] if len(sys.argv) > 1 else "static/data/sky")

@@ -1,7 +1,7 @@
 // Draws the current stack on the plate canvas, with its overlays.
 import {
   asinhScale, channelWavelength, COMPOSITE, DETECTOR_RANGES, differenceLimit, positionAt, selectBand,
-  skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
+  sharpenForDisplay, skyToPixel, stackFrames, stretchLimits, subtract, wavelengthColor,
 } from './stack.js';
 
 const AMBER = [255, 184, 77];
@@ -9,9 +9,9 @@ const BLUE = [92, 170, 255];
 const NEUTRAL = [235, 240, 248];
 const GAIA_FAINT_LIMIT = 19;
 const HOT_KNEE = 0.62;
-const BLOOM_ALPHA = 0.7;
+const BLOOM_ALPHA = 0.32;
 const BLOOM_LAYER_SIZE = 256;
-const BLOOM_LAYER_BLUR = 3.5;
+const BLOOM_LAYER_BLUR = 2.5;
 const PATH_START_YEAR = 2010.5;
 const SCALE_BAR_ARCSEC = [120, 60, 30, 15, 10];
 
@@ -73,14 +73,18 @@ function hotColor(tint, level) {
 }
 
 export function paintMono(buffer, size, image, limits, tint) {
+  const display = sharpenForDisplay(image, size);
   paint(buffer, size, (pixel) => {
-    const value = image[pixel];
+    const value = display[pixel];
     if (Number.isNaN(value)) return [0, 0, 0, 0];
     return hotColor(tint, asinhScale(value, limits));
   });
 }
 
-export function paintComposite(buffer, size, { red, green, blue }, limits) {
+export function paintComposite(buffer, size, stacks, limits) {
+  const red = sharpenForDisplay(stacks.red, size);
+  const green = sharpenForDisplay(stacks.green, size);
+  const blue = sharpenForDisplay(stacks.blue, size);
   paint(buffer, size, (pixel) => {
     if (Number.isNaN(red[pixel]) && Number.isNaN(green[pixel]) && Number.isNaN(blue[pixel])) return [0, 0, 0, 0];
     const part = (image, limit) => (Number.isNaN(image[pixel]) ? 0 : asinhScale(image[pixel], limit) * 255);
