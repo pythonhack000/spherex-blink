@@ -387,7 +387,8 @@ async function lockCamera(object) {
   state.follow = true;
   state.picking = false;
   state.candidates = null;
-  state.track = null;
+  const sameAsTarget = object.key === state.target.key && Boolean(object.key);
+  if (!sameAsTarget) state.track = null;
   if (state.view === 'compare') setView('one');
   if (state.mode !== 'video') setMode('video');
   if (state.staticMeta && !$('wise').checked && (object.pmra || object.pmdec)) {
@@ -397,8 +398,10 @@ async function lockCamera(object) {
   if (state.position === ALL_DATES) state.position = 0;
   setPlaying(true);
   measureSpectrum(object, null);
-  $('motion-result').replaceChildren();
-  $('measure').hidden = false;
+  if (!sameAsTarget) {
+    $('motion-result').replaceChildren();
+    $('measure').hidden = false;
+  }
   refreshFollowUi();
   render();
 }
